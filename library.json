@@ -1,0 +1,31 @@
+{
+    "name": "MeshCore",
+    "version": "1.6.1",
+    "description": "MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios.",
+    "keywords": "lora, mesh, meshcore",
+    "repository":
+    {
+      "type": "git",
+      "url": "https://github.com/ripplebiz/MeshCore.git"
+    },
+    "authors":
+    [
+      {
+        "name": "Andy Kirby"
+      }
+    ],
+    "license": "MIT",
+    "homepage": "https://meshcore.co.uk/",
+    "dependencies": {
+      "jgromes/RadioLib": "^7.1.2",
+      "rweather/Crypto": "^0.4.0",
+      "adafruit/RTClib": "^2.1.3",
+      "melopero/Melopero": "^1.1.0",
+      "electroniccats/CayenneLPP": "1.4.0"
+    },
+    "build": {
+        "variant": "custom_board_variant"
+    },
+    "frameworks": "*",
+    "platforms": "*"
+}
