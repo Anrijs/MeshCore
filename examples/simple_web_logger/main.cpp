@@ -17,10 +17,10 @@
 
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/StaticPoolPacketManager.h>
-#include <helpers/SimpleMeshTables.h>
 #include <helpers/IdentityStore.h>
 #include <RTClib.h>
 #include <target.h>
+#include "LoggerMeshTables.h"
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
@@ -149,6 +149,7 @@ struct LogPrefs {
 
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
+  LoggerMeshTables* _tables;
   NodePrefs _prefs;
   WiFiPrefs _wifi;
   LogPrefs _logp;
@@ -284,7 +285,7 @@ protected:
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override {
-    return _logp.dofwd;
+    return _logp.dofwd && !_tables->hasSeen2(packet);
   }
 
   //void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len)
@@ -328,10 +329,16 @@ protected:
       mesh::Utils::toHex(path, pkt->path, pkt->path_len);
       mesh::Utils::toHex(payload, pkt->payload, pkt->payload_len);
 
+      char hashstr[(MAX_HASH_SIZE * 2) + 1];
+      uint8_t hash[MAX_HASH_SIZE];
+      pkt->calculatePacketHash(hash);
+      mesh::Utils::toHex(hashstr, hash, MAX_HASH_SIZE);
+
       JsonDocument doc;
       doc["version"] = 1;
       doc["type"] = "RAW";
       doc["reporter"] = sender;
+      doc["hash"] = hashstr;
       doc["recvtime"] = getRTCClock()->getCurrentTime();
       doc["packet"]["header"]["raw"] = pkt->header;
       doc["packet"]["header"]["route-type"] = pkt->header & PH_ROUTE_MASK;
@@ -369,10 +376,16 @@ protected:
     mesh::Utils::toHex(pubkey, id.pub_key, PUB_KEY_SIZE);
     mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
 
+    char hashstr[(MAX_HASH_SIZE * 2) + 1];
+    uint8_t hash[MAX_HASH_SIZE];
+    pkt->calculatePacketHash(hash);
+    mesh::Utils::toHex(hashstr, hash, MAX_HASH_SIZE);
+
     JsonDocument doc;
     doc["version"] = 1;
     doc["type"] = "ADV";
     doc["reporter"] = sender;
+    doc["hash"] = hashstr;
     doc["snr"] = pkt->getSNR();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = timestamp;
@@ -437,10 +450,16 @@ protected:
     mesh::Utils::toHex(pubkey, from.id.pub_key, PUB_KEY_SIZE);
     mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
 
+    char hashstr[(MAX_HASH_SIZE * 2) + 1];
+    uint8_t hash[MAX_HASH_SIZE];
+    pkt->calculatePacketHash(hash);
+    mesh::Utils::toHex(hashstr, hash, MAX_HASH_SIZE);
+
     JsonDocument doc;
     doc["version"] = 1;
     doc["type"] = "MSG";
     doc["reporter"] = sender;
+    doc["hash"] = hashstr;
     doc["snr"] = pkt->getSNR();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = sender_timestamp;
@@ -489,10 +508,16 @@ protected:
     mesh::Utils::toHex(chhash, channel.hash, PATH_HASH_SIZE);
     mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
 
+    char hashstr[(MAX_HASH_SIZE * 2) + 1];
+    uint8_t hash[MAX_HASH_SIZE];
+    pkt->calculatePacketHash(hash);
+    mesh::Utils::toHex(hashstr, hash, MAX_HASH_SIZE);
+
     JsonDocument doc;
     doc["version"] = 1;
     doc["type"] = "PUB";
     doc["reporter"] = sender;
+    doc["hash"] = hashstr;
     doc["snr"] = pkt->getSNR();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = timestamp;
@@ -532,7 +557,7 @@ protected:
   }
 
 public:
-  MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables)
+  MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LoggerMeshTables& tables)
      : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables)
   {
     // defaults
@@ -543,6 +568,7 @@ public:
     strcpy(_prefs.node_name, "NONAME");
     _prefs.freq = LORA_FREQ;
     _prefs.tx_power_dbm = LORA_TX_POWER;
+    _tables = &tables;
 
     command[0] = 0;
     curr_recipient = NULL;
@@ -941,7 +967,7 @@ public:
 };
 
 StdRNG fast_rng;
-SimpleMeshTables tables;
+LoggerMeshTables tables;
 MyMesh the_mesh(radio_driver, fast_rng, *new VolatileRTCClock(), tables); // TODO: test with 'rtc_clock' in target.cpp
 
 void halt() {
