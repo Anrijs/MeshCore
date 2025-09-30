@@ -1,0 +1,3 @@
+- Show all messages when channel is opened
+- Fix channel message height calculations when scale is decimal
+- Drop/replace UF chars

@@ -28,8 +28,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Number of pins
 
-#define PINS_COUNT           (23)
-#define NUM_DIGITAL_PINS     (23)
+#define PINS_COUNT           (24)
+#define NUM_DIGITAL_PINS     (24)
 #define NUM_ANALOG_INPUTS    (3)
 #define NUM_ANALOG_OUTPUTS   (0)
 
@@ -38,6 +38,7 @@
 
 #define PIN_SERIAL1_TX       (1)
 #define PIN_SERIAL1_RX       (0)
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // I2C pin definition

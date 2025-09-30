@@ -75,7 +75,7 @@ extern "C"
  */
 #define  PIN_VBAT_READ    (_PINNUM(0, 2))
 #define  PIN_VBAT_READ_EN (_PINNUM(0, 31))
-#define  ADC_MULTIPLIER   (7.281f)
+#define  ADC_MULTIPLIER   (7.90f)
 
 
 /*
@@ -97,8 +97,8 @@ extern "C"
 
 // Display
 #define PIN_SPI1_MISO       -1
-#define PIN_SPI1_MOSI       (_PINNUM(0, 20))
-#define PIN_SPI1_SCK        (_PINNUM(0, 19))
+#define PIN_SPI1_MOSI       (_PINNUM(1, 15))
+#define PIN_SPI1_SCK        (_PINNUM(1, 11))
 
 /*
  * Wire Interfaces
@@ -143,16 +143,6 @@ extern "C"
 #define SX126X_TXEN  (_PINNUM(0, 27)) // VC1
 #define SX126X_DIO2_AS_RF_SWITCH false
 #define SX126X_DIO3_TCXO_VOLTAGE (1.8f)
-
-// EINK, uses SPI1
-#define DISP_WIDTH   176
-#define DISP_HEIGHT  192
-#define DISP_CS      (_PINNUM(0, 22))
-#define DISP_DC      (_PINNUM(0, 21))
-#define DISP_RST     (_PINNUM(0, 28))
-#define DISP_BUSY    (_PINNUM(0,  3))
-#define DISP_BS1     (_PINNUM(1, 12))
-#define DISP_SRAM_CS -1
 
 
 #ifdef __cplusplus
