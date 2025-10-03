@@ -6,7 +6,7 @@ void GUI::draw(bool invalidate) {
 
     if (!page) {
         tft->fillScreen(MI_COLOR_BKG);
-        tft->setTextFont(MI_FONT);
+        tft->setFreeFont(MI_FREE_FONT);
         tft->setTextColor(TFT_RED);
         tft->setCursor(0,8);
         tft->setTextWrap(true);
@@ -20,7 +20,7 @@ void GUI::draw(bool invalidate) {
 void Page::draw() {
     if (!gui || !gui->tft) return;
 
-    gui->tft->setTextFont(MI_FONT);
+    gui->tft->setFreeFont(MI_FREE_FONT);
     gui->tft->setTextColor(TFT_RED);
     gui->tft->setCursor(0,8);
     gui->tft->setTextWrap(true);
@@ -80,12 +80,12 @@ void Menu::onInput(char c) {
 
 void Boot::draw() {
     gui->tft->fillScreen(0x10c5);
+    //gui->tft->setFreeFont(MI_FREE_FONT);
 
     gui->tft->setTextColor(TFT_WHITE);
     gui->tft->setTextSize(3*MI_SCALE);
     gui->tft->setCursor(10, 40);
     gui->tft->print("MESHCORE");
-
     gui->tft->setTextColor(TFT_YELLOW);
     gui->tft->setTextSize(1*MI_SCALE);
     gui->tft->setCursor(20, 67);
@@ -178,6 +178,7 @@ void GUI::loop()  {
             uint16_t w = tft->width();
             uint16_t h = tft->height();
 
+            tft->setFreeFont(MI_FREE_FONT);
             tft->setTextSize(2*MI_SCALE);
             uint16_t th = tft->fontHeight();
 
@@ -187,13 +188,20 @@ void GUI::loop()  {
             uint16_t x = (w - d) / 2;
             uint16_t y = (h - d) / 2;
 
-            uint16_t fw = tft->textWidth(String(getT9char()));
+            TFT_eSprite row = TFT_eSprite(tft);
+            row.createSprite(d, d);
+            row.setFreeFont(MI_FREE_FONT);
+            row.setTextSize(2*MI_SCALE);
+            row.setTextColor(TFT_WHITE);
+            row.fillRect(0, 0, d, d, TFT_PURPLE);
+            uint16_t fw = row.textWidth(String(getT9char()));
 
-            tft->fillRect(x,y,d,d, TFT_PURPLE);
-            tft->setCursor(x + (d - fw) / 2, y + p);
-            tft->setTextColor(TFT_WHITE);
-            tft->print(getT9char());
-            tft->setTextSize(1*MI_SCALE);
+            row.setCursor((d - fw) / 2,  + p);
+            row.print(getT9char());
+            row.pushSprite(x, y);
+
+
+
             lastkey = t9key;
             lastpos = t9pos;
         }
@@ -207,14 +215,14 @@ void GUI::loop()  {
 const char* const GUI::t9Chars[12] = {
     " 0",
     ".,!?1",
-    "abcABC2",
-    "defDEF3",
-    "ghiGHI4",
-    "jklJKL5",
-    "mnoMNO6",
-    "pqrsPQRS7",
-    "tuvTUV8",
-    "wxyzWXYZ9",
+    "a\213bc\214A\200BC\2012",
+    "de\215fDE\202F3",
+    "g\216hi\217G\203HI\2044",
+    "jk\220l\221JK\205L\2065",
+    "mn\222oMN\208O6",
+    "pqrs\223PQRS\2107",
+    "tu\224vTU\211V8",
+    "wxyz\225WXYZ\2129",
     " +-_@#$%^&*()",
     " []{}:;<>"
 };

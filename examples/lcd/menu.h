@@ -24,6 +24,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <cstdlib>
+#include "font.h"
 
 #define LIGHT_MODE
 
@@ -45,6 +46,7 @@
 
 #define MI_SCALE 1
 #define MI_FONT 2
+#define MI_FREE_FONT &LatvFont
 #define MI_FONT_HEIGHT (chr_hgt_f16 * MI_SCALE)   // font height
 #define MI_FONT_PADDING (2 * MI_SCALE)  // px padding each side
 #define MI_VALUE_WIDTH  (40 * MI_SCALE) // px padding each side
@@ -206,8 +208,8 @@ public:
         
         TFT_eSprite row = TFT_eSprite(gui->tft);
         row.createSprite(w, h);
-        row.setTextFont(MI_FONT);
-        row.setTextSize(1*MI_SCALE);
+        row.setFreeFont(MI_FREE_FONT);
+        //row.setTextSize(1*MI_SCALE);
         row.setTextWrap(false);
         row.setCursor(MI_FONT_PADDING, 0);
         row.setTextColor(MI_COLOR_TEXT);
@@ -637,7 +639,7 @@ public:
 
                     TFT_eSprite row = TFT_eSprite(gui->tft);
                     row.createSprite(gui->tft->width(), texth + MI_FONT_PADDING);
-                    row.setTextFont(MI_FONT);
+                    row.setFreeFont(MI_FREE_FONT);
                     row.setTextSize(1*MI_SCALE);
                     row.setTextWrap(true);
                     row.setTextColor(TFT_BLACK);
@@ -667,7 +669,6 @@ public:
         uint16_t h = gui->tft->height();
         uint16_t w = gui->tft->width();
 
-        TFT_eSprite row = TFT_eSprite(gui->tft);
 
         uint16_t ih = MI_FONT_HEIGHT + MI_FONT_PADDING + MI_FONT_PADDING;
         uint16_t tw = gui->tft->textWidth(buffer);
@@ -675,8 +676,9 @@ public:
 
         y = h - ih;
 
+        TFT_eSprite row = TFT_eSprite(gui->tft);
         row.createSprite(gui->tft->width(), ih);
-        row.setTextFont(MI_FONT);
+        row.setFreeFont(MI_FREE_FONT);
         row.setTextSize(1*MI_SCALE);
         row.setTextWrap(false);
         row.setTextColor(TFT_BLACK);
@@ -702,7 +704,7 @@ public:
                 buffer[(pos--)-1] = 0;
                 invalidate();
             }
-        } else if (c >= 32 && c <= 126) {
+        } else if (c >= 32 && c <= 0x95) { // extended for latvian chars
             size_t pos = strlen(buffer);
             if (pos < bufsize) buffer[pos] = c; buffer[pos+1] = 0;
             invalidate();
