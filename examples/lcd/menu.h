@@ -192,37 +192,30 @@ public:
 };
 
 class MILabel: public MI {
-    const char* label;
+    char* label;
 public:
     MILabel(GUI* gui, const char* label): MI(gui) {
-        this->label = label;
+        this->label = new char[strlen(label) + 1]; 
+        strcpy(this->label, label);
     }
 
     void draw(uint16_t &y, uint16_t bkg) override {
         uint16_t w = gui->tft->width();
         uint16_t h = MI_FONT_HEIGHT + MI_FONT_PADDING + MI_FONT_PADDING;
-        uint16_t x = 0;
         uint16_t valx = w - MI_VALUE_WIDTH;
-
-        gui->tft->setTextColor(MI_COLOR_TEXT);
-        gui->tft->setTextFont(MI_FONT);
-
-        if (redraw) gui->tft->fillRect(
-            x,
-            y,
-            w,
-            h,
-            bkg
-        );
-
-        y += MI_FONT_PADDING;
-        x += MI_FONT_PADDING;
         
-        gui->tft->setCursor(x,y);
-        if (redraw) gui->tft->print(label);
-
-        x += MI_FONT_PADDING;
-        y = gui->tft->getCursorY() + MI_FONT_HEIGHT + MI_FONT_PADDING;
+        TFT_eSprite row = TFT_eSprite(gui->tft);
+        row.createSprite(w, h);
+        row.setTextFont(MI_FONT);
+        row.setTextSize(1*MI_SCALE);
+        row.setTextWrap(false);
+        row.setCursor(MI_FONT_PADDING, 0);
+        row.setTextColor(MI_COLOR_TEXT);
+        row.fillRect(0,0,w,h,bkg);
+        row.setCursor(MI_FONT_PADDING,MI_FONT_PADDING);
+        row.print(label);
+        if (redraw) row.pushSprite(0, y);
+        y += row.getCursorY() + MI_FONT_HEIGHT + MI_FONT_PADDING;
 
         onDraw();
     }
@@ -533,6 +526,7 @@ public:
 };
 
 class Menu: public Page {
+    // TODO: Paginate
     char pageno[8] = "1/1";
     MIString* title;
     std::vector<MI*> menuitems;
@@ -612,7 +606,7 @@ public:
     }
     int stripes[4] = {
         0xFFFF,
-        0xF7BE,
+        0xe73c,
         0xdf7f,
         0xBF1F
     };
@@ -623,6 +617,7 @@ public:
             int16_t y = 0;
             drawInput(y);
 
+            long start = millis();
             if (messages->size() != lastsize) {
                 // TODO: size may be truncated 
                 gui->tft->setTextSize(1*MI_SCALE);
@@ -634,15 +629,28 @@ public:
                     int16_t textw = gui->tft->textWidth(m.msg);
                     // textw += gui->tft->textWidth("00:00 ");
                     int16_t lines = (textw / gui->tft->width()) + 1;
-                    int16_t texth = (lines * ih) * MI_SCALE;
+                    int16_t texth = (lines * MI_FONT_HEIGHT);
 
                     y -= texth + MI_FONT_PADDING;
                     uint16_t color = i % 2;
                     if (m.me) color += 2;
-                    gui->tft->fillRect(0, y, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
-                    gui->tft->setCursor(MI_FONT_PADDING, y);
-                    // gui->tft->printf("%02u:%02u ", m.hh, m.mm);
-                    gui->tft->print(m.msg);
+
+                    TFT_eSprite row = TFT_eSprite(gui->tft);
+                    row.createSprite(gui->tft->width(), texth + MI_FONT_PADDING);
+                    row.setTextFont(MI_FONT);
+                    row.setTextSize(1*MI_SCALE);
+                    row.setTextWrap(true);
+                    row.setTextColor(TFT_BLACK);
+                    row.fillRect(0, 0, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
+                    row.setCursor(MI_FONT_PADDING, 0);
+                    row.print(m.msg);
+                    row.pushSprite(0, y);
+
+                    // gui->tft->fillRect(0, y, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
+                    // gui->tft->setCursor(MI_FONT_PADDING, y);
+                    // // gui->tft->printf("%02u:%02u ", m.hh, m.mm);
+                    // gui->tft->print(m.msg);
+
                     if (y < 0) break;
                 }
                 // fill top
@@ -650,6 +658,7 @@ public:
                     gui->tft->fillRect(0, 0, gui->tft->width(), y, MI_COLOR_BKG);
                 }
             }
+            Serial.printf("Page render took %u ms\n", millis() - start);
         }
         onDraw();
     }
@@ -657,21 +666,25 @@ public:
     void drawInput(int16_t &y) {
         uint16_t h = gui->tft->height();
         uint16_t w = gui->tft->width();
-        gui->tft->setTextSize(1*MI_SCALE);
-        gui->tft->setTextWrap(true);
+
+        TFT_eSprite row = TFT_eSprite(gui->tft);
 
         uint16_t ih = MI_FONT_HEIGHT + MI_FONT_PADDING + MI_FONT_PADDING;
         uint16_t tw = gui->tft->textWidth(buffer);
         int16_t  x = MI_FONT_PADDING;
 
-        if (tw > w) { x = w - tw - MI_FONT_PADDING; }
         y = h - ih;
 
-        gui->tft->drawLine(0, y, w, y, TFT_ORANGE);
-        gui->tft->fillRect(0, y+1, w, ih, TFT_WHITE);
-        gui->tft->setCursor(x, y + MI_FONT_PADDING);
-        gui->tft->setTextColor(TFT_BLACK);
-        gui->tft->print(buffer);
+        row.createSprite(gui->tft->width(), ih);
+        row.setTextFont(MI_FONT);
+        row.setTextSize(1*MI_SCALE);
+        row.setTextWrap(false);
+        row.setTextColor(TFT_BLACK);
+        row.drawLine(0, 0, w, y, TFT_ORANGE);
+        row.fillRect(0, 1, w, ih, TFT_WHITE);
+        row.setCursor(x, 0 + MI_FONT_PADDING);
+        row.print(buffer);
+        row.pushSprite(0, y);
     }
 
     void onInput(char c) override {

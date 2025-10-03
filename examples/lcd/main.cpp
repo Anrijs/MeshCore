@@ -35,6 +35,57 @@ TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
 GUI gui(&tft);
 
+struct NodePrefs {  // persisted to file
+  float airtime_factor;
+  char node_name[32];
+  double node_lat, node_lon;
+  float freq;
+  uint8_t tx_power_dbm;
+  uint8_t unused[3];
+} prefs;
+
+struct {
+  struct {
+    Menu* m = new Menu(&gui, prefs.node_name);
+    MIPage* contacts;
+    MIPage* channels;
+    MIPage* settings;
+    MIAction* flood;
+  } home;
+
+  struct {
+    Menu* m = new Menu(&gui, "Settings");
+    MIPage* minfo;
+    MIPage* mradio;
+    MIAction* mireboot;
+    struct {
+      Menu* m = new Menu(&gui, "Public Info");
+      MIString* name;
+      MIString* pubkey;
+      MIBool* gps;
+      MIFloat* lat;
+      MIFloat* lon;
+    } info;
+    struct {
+      Menu* m = new Menu(&gui, "Radio Settings");
+      MIFloat* freq;
+      MIFloat* bw;
+      MIInteger* sf;
+      MIInteger* cr;
+      MIInteger* tx;
+    } radio;
+  } settings;
+
+  struct {
+    Menu* m = new Menu(&gui, "Contacts");
+  } contacts;
+
+  struct {
+    Menu* m = new Menu(&gui, "Channels");
+  } channels;
+} menu;
+
+
 String utf8ascii(String s) {      
   String r= "";
   int len = s.length();
@@ -100,15 +151,6 @@ String utf8ascii(String s) {
 
 /* -------------------------------------------------------------------------------------- */
 
-struct NodePrefs {  // persisted to file
-  float airtime_factor;
-  char node_name[32];
-  double node_lat, node_lon;
-  float freq;
-  uint8_t tx_power_dbm;
-  uint8_t unused[3];
-} prefs;
-
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
   uint32_t expected_ack_crc;
@@ -149,6 +191,11 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
           c.gps_lat = c.gps_lon = 0;   // not yet supported
 
           if (!success) break;  // EOF
+
+          
+          MILabel* micon = new MILabel(&gui, c.name);
+          //MIPage* mipri = new MIPage(&gui, "MC Tikla Paplasinasana", pri);
+          menu.contacts.m->add(micon);
 
           c.id = mesh::Identity(pub_key);
           c.lastmod = 0;
@@ -259,18 +306,18 @@ protected:
     saveContacts();
   }
 
-  bool processAck(const uint8_t *data) override {
+  ContactInfo* processAck(const uint8_t *data) override {
     if (memcmp(data, &expected_ack_crc, 4) == 0) {     // got an ACK from recipient
       Serial.printf("   Got ACK! (round trip: %d millis)\n", _ms->getMillis() - last_msg_sent);
       // NOTE: the same ACK can be received multiple times!
       expected_ack_crc = 0;  // reset our expected hash, now that we have received ACK
-      return true;
+      return NULL;  // TODO: really should return ContactInfo pointer 
     }
 
     //uint32_t crc;
     //memcpy(&crc, data, 4);
     //MESH_DEBUG_PRINTLN("unknown ACK received: %08X (expected: %08X)", crc, expected_ack_crc);
-    return false;
+    return NULL;
   }
 
   void onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) override {
@@ -490,47 +537,6 @@ void halt() {
   while (1) ;
 }
 
-struct {
-  struct {
-    Menu* m = new Menu(&gui, prefs.node_name);
-    MIPage* contacts;
-    MIPage* channels;
-    MIPage* settings;
-    MIAction* flood;
-  } home;
-
-  struct {
-    Menu* m = new Menu(&gui, "Settings");
-    MIPage* minfo;
-    MIPage* mradio;
-    MIAction* mireboot;
-    struct {
-      Menu* m = new Menu(&gui, "Public Info");
-      MIString* name;
-      MIString* pubkey;
-      MIBool* gps;
-      MIFloat* lat;
-      MIFloat* lon;
-    } info;
-    struct {
-      Menu* m = new Menu(&gui, "Radio Settings");
-      MIFloat* freq;
-      MIFloat* bw;
-      MIInteger* sf;
-      MIInteger* cr;
-      MIInteger* tx;
-    } radio;
-  } settings;
-
-  struct {
-    Menu* m = new Menu(&gui, "Contacts");
-  } contacts;
-
-  struct {
-    Menu* m = new Menu(&gui, "Channels");
-  } channels;
-} menu;
-
 bool miActionFlood(MIAction* action) {
   the_mesh.sendSelfAdvert(100);
   return true;
@@ -645,6 +651,9 @@ void setupMenu() {
 }
 
 void setup() {
+  pinMode(TFT_BL, OUTPUT);
+  gui.setBrightness(0);
+  
   Serial.begin(115200);
   Serial2.begin(9600);
 
@@ -655,15 +664,14 @@ void setup() {
   tft.getSPIinstance();
   tft.init();
   tft.setRotation(3);
-  tft.setTextSize(1*MI_SCALE);
-  tft.fillScreen(MI_COLOR_BKG);
 
   setupMenu();
   pinMode(BTN_WAKE, INPUT);
-  pinMode(TFT_BL, OUTPUT);
   gui.setBrightness(16); // 11 bad 
 
-  gui.page = menu.home.m;
+  Boot* hello = new Boot(&gui);
+
+  gui.page = hello;
   gui.draw();
 
   if (!radio_init()) { halt(); }
@@ -688,6 +696,10 @@ void setup() {
   radio_set_tx_power(the_mesh.getTxPowerPref());
   // send out initial Advertisement to the mesh
   // the_mesh.sendSelfAdvert(1200);   // add slight delay
+
+  gui.page = menu.home.m;
+  gui.draw();
+  delete hello;
 }
 
 String hexy(const char* in) {

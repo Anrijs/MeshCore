@@ -79,15 +79,17 @@ void Menu::onInput(char c) {
 }
 
 void Boot::draw() {
-    gui->tft->fillScreen(MI_COLOR_BKG);
+    gui->tft->fillScreen(0x10c5);
 
+    gui->tft->setTextColor(TFT_WHITE);
     gui->tft->setTextSize(3*MI_SCALE);
     gui->tft->setCursor(10, 40);
-    gui->tft->print("MeshCore");
+    gui->tft->print("MESHCORE");
 
+    gui->tft->setTextColor(TFT_YELLOW);
     gui->tft->setTextSize(1*MI_SCALE);
     gui->tft->setCursor(20, 67);
-    gui->tft->print("MC: v1.7.4, GUI: v0.1");
+    gui->tft->print("MC: v1.9.0, GUI: v0.1");
 }
 
 void GUI::pop() {
@@ -96,8 +98,8 @@ void GUI::pop() {
             page = pages.stack[pages.size];
             pages.size--;
             //tft->fillScreen(MI_COLOR_BKG);
+            page->invalidate();
         }
-        page->invalidate();
     }
 }
 
@@ -141,7 +143,9 @@ void GUI::stack(Page* next) {
 }
 
 void GUI::t9commit() {
+    t9mode = false;
     onInput(t9Chars[t9key][t9pos]);
+    t9mode = true;
     t9time = 0;
     t9pos = 0;
     t9key = -1;
@@ -212,5 +216,5 @@ const char* const GUI::t9Chars[12] = {
     "tuvTUV8",
     "wxyzWXYZ9",
     " +-_@#$%^&*()",
-    " []{};<>"
+    " []{}:;<>"
 };
