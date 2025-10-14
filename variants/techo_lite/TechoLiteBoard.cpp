@@ -11,12 +11,6 @@ void TechoLiteBoard::begin() {
     startup_reason = BD_STARTUP_NORMAL;
     btn_prev_state = HIGH;
 
-    // SX1262 TX/RX EN 
-    pinMode(SX126X_RXEN, OUTPUT);
-    pinMode(SX126X_TXEN, OUTPUT);
-    digitalWrite(SX126X_RXEN, LOW);
-    digitalWrite(SX126X_TXEN, LOW);
-
     // Battery measure
     pinMode(PIN_VBAT_READ, INPUT);
     pinMode(PIN_VBAT_READ_EN, OUTPUT);

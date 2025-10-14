@@ -75,15 +75,15 @@ extern "C"
  */
 #define  PIN_VBAT_READ    (_PINNUM(0, 2))
 #define  PIN_VBAT_READ_EN (_PINNUM(0, 31))
-#define  ADC_MULTIPLIER   (7.90f)
+#define  ADC_MULTIPLIER   (2.0f)
 
 
 /*
  * Serial interfaces
  */
 
-#define PIN_SERIAL1_RX      (_PINNUM(1,  10))
-#define PIN_SERIAL1_TX      (_PINNUM(0,  29))
+#define PIN_SERIAL1_RX      (_PINNUM(0,  21))
+#define PIN_SERIAL1_TX      (_PINNUM(0,  19))
 
 /*
  * SPI Interfaces
@@ -103,46 +103,49 @@ extern "C"
 /*
  * Wire Interfaces
  */
-#define WIRE_INTERFACES_COUNT 2
+#define WIRE_INTERFACES_COUNT 1
 
 // bottom on epaper
-#define PIN_WIRE_SDA         (_PINNUM(1,  4))
-#define PIN_WIRE_SCL         (_PINNUM(1,  2))
+#define PIN_WIRE_SDA         (_PINNUM(0,  22))
+#define PIN_WIRE_SCL         (_PINNUM(0,  20))
 #define PIN_BOARD_SDA        PIN_WIRE_SDA
 #define PIN_BOARD_SCL        PIN_WIRE_SCL
 
-// top on epaper
-#define PIN_WIRE1_SDA        (_PINNUM(0, 23))
-#define PIN_WIRE1_SCL        (_PINNUM(0, 25))
+////////////////////////////////////////////////////////////////////////////////
+// QSPI FLASH
 
-// QSPI Pins
-#define PIN_QSPI_SCK         (_PINNUM(0, 4))
-#define PIN_QSPI_CS          (_PINNUM(0, 12))
-#define PIN_QSPI_IO0         (_PINNUM(0,  6))
-#define PIN_QSPI_IO1         (_PINNUM(0,  8))
-#define PIN_QSPI_IO2         (_PINNUM(1,  9))
-#define PIN_QSPI_IO3         (_PINNUM(0, 26))
+#define PIN_QSPI_SCK            _PINNUM(0, 4)
+#define PIN_QSPI_CS             _PINNUM(0, 12)
+#define PIN_QSPI_IO0            _PINNUM(0, 6)
+#define PIN_QSPI_IO1            _PINNUM(0, 8)
+#define PIN_QSPI_IO2            _PINNUM(1, 9)
+#define PIN_QSPI_IO3            _PINNUM(0, 26)
 
-// On-board QSPI Flash
-#define EXTERNAL_FLASH_DEVICES   MX25R6435F
+#define EXTERNAL_FLASH_DEVICES ZD25WQ32CEIGR
 #define EXTERNAL_FLASH_USE_QSPI
 
 // RT9080
 #define RT9080_EN    (_PINNUM(0, 30))
 
-// SX1262 
-#define P_LORA_NSS   (_PINNUM(0, 11))
-#define P_LORA_DIO_1 (_PINNUM(1,  8))
-#define P_LORA_DIO_2 (_PINNUM(0,  5))
-#define P_LORA_RESET (_PINNUM(0,  7))
-#define P_LORA_BUSY  (_PINNUM(0, 14))
-#define P_LORA_MISO  PIN_SPI_MISO
-#define P_LORA_SCLK  PIN_SPI_SCK 
-#define P_LORA_MOSI  PIN_SPI_MOSI
-#define SX126X_RXEN  (_PINNUM(1,  1)) // VC2
-#define SX126X_TXEN  (_PINNUM(0, 27)) // VC1
-#define SX126X_DIO2_AS_RF_SWITCH false
-#define SX126X_DIO3_TCXO_VOLTAGE (1.8f)
+////////////////////////////////////////////////////////////////////////////////
+// Lora
+
+#define USE_SX1262
+#define LORA_CS                 _PINNUM(0, 11)
+#define SX126X_POWER_EN         _PINNUM(0, 30)
+#define SX126X_DIO1             _PINNUM(1, 8)
+#define SX126X_BUSY             _PINNUM(0, 14)
+#define SX126X_RESET            _PINNUM(0, 7)
+#define SX126X_RF_VC1           _PINNUM(0, 27)
+#define SX126X_RF_VC2           _PINNUM(0, 33)
+
+#define P_LORA_DIO_1            SX126X_DIO1
+#define P_LORA_NSS              LORA_CS
+#define P_LORA_RESET            SX126X_RESET
+#define P_LORA_BUSY             SX126X_BUSY
+#define P_LORA_SCLK             PIN_SPI_SCK
+#define P_LORA_MISO             PIN_SPI_MISO
+#define P_LORA_MOSI             PIN_SPI_MOSI
 
 
 #ifdef __cplusplus

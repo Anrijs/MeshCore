@@ -22,19 +22,23 @@ public:
 
   uint16_t getBattMilliVolts() override {
     analogReadResolution(12);
-    digitalWrite(PIN_VBAT_READ_EN, HIGH);
     analogReference(AR_INTERNAL_3_0);
+    digitalWrite(PIN_VBAT_READ_EN, HIGH);
+    delay(10);
 
     uint32_t raw = 0;
     for (int i = 0; i < BATTERY_SAMPLES; i++) {
       raw += analogRead(PIN_VBAT_READ);
+      delay(2);
     }
 
     digitalWrite(PIN_VBAT_READ_EN, LOW);
     raw = raw / BATTERY_SAMPLES;
 
-    Serial.printf("ADC Measure: raw=%u, vlotage=%.2f\n", raw, ADC_MULTIPLIER * raw);
-    return (ADC_MULTIPLIER * raw);
+    uint16_t mv = (raw * ADC_MULTIPLIER * 3.0) / 4.096;
+
+    Serial.printf("ADC Measure: raw=%u, voltage=%.2f\n", raw,  mv / 1000.0);
+    return mv;
   }
 
   const char* getManufacturerName() const override {
