@@ -37,14 +37,25 @@ void Menu::draw() {
     int pos = 0;
     gui->tft->setTextWrap(wrap);
     title->draw(y, MI_COLOR_TITLE_BKG);
+
+    int skip = 0;
+    if (selected > 10) {
+        skip = selected - 10;
+        invalidate();
+    }
+
     for (auto &mi: menuitems) {
         //mi->draw(); // it should have position coocked in
         uint16_t color = MI_COLOR_BKG;
         if (pos == selected) {
             color = mi->editing ? MI_COLOR_EDITING_BKG : MI_COLOR_SELECTED_BKG;
         }
-        mi->draw(y, color);
         pos++;
+
+        if (skip-- > 0) continue;
+        mi->draw(y, color);
+
+        if (y > gui->tft->height()) break;
     }
     if (fill && y < gui->tft->height()) {
         gui->tft->fillRect(0, y, gui->tft->width(), gui->tft->height() - y, MI_COLOR_BKG);

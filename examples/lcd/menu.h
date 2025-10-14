@@ -23,6 +23,8 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <cstdlib>
+#include <MeshCore.h>
+#include <Packet.h>
 #include "font.h"
 
 #define LIGHT_MODE
@@ -50,20 +52,31 @@
 #define MI_FONT_PADDING (2 * MI_SCALE)  // px padding each side
 #define MI_VALUE_WIDTH  (40 * MI_SCALE) // px padding each side
 
-class GUI;
-class Menu;
-class Page;
-class MI;
-
+// TODO: add channel/user ref
 struct message {
+    uint8_t hash[MAX_HASH_SIZE];
     String msg;
     uint8_t hh;
     uint8_t mm;
+    int8_t repeats = 0;
     bool me;
 
     message(char* buf, uint8_t hh, uint8_t mm, bool me): msg(buf), hh(hh), mm(mm), me(me) { };
     message(String str, uint8_t hh, uint8_t mm, bool me): msg(str), hh(hh), mm(mm), me(me) { };
+
+    void setHash(uint8_t* src) {
+        memcpy(&hash, hash, MAX_HASH_SIZE);
+    }
+
+    void setHash(mesh::Packet* packet) {
+        packet->calculatePacketHash(hash);
+    }
 };
+
+class GUI;
+class Menu;
+class Page;
+class MI;
 
 class GUI {
     struct {
@@ -112,7 +125,7 @@ public:
         lcdOff = millis() + 15000;
         if (!lcdOn) {
             tft->writecommand(ST7789_SLPOUT);
-            analogWrite(TFT_BL, brightness);
+            analogWrite(PIN_LCD_BL, brightness);
         }
         lcdOn = true;
     }
@@ -120,7 +133,7 @@ public:
     void sleep() {
         if (lcdOn) {
             tft->writecommand(ST7789_SLPIN);
-            analogWrite(TFT_BL, 0);
+            analogWrite(PIN_LCD_BL, 0);
         }
         lcdOn = false;
     }
@@ -132,7 +145,7 @@ public:
 
         if (lcdOn) {
             Serial.printf("Bright: %d\n", brightness);
-            analogWrite(TFT_BL, brightness);
+            analogWrite(PIN_LCD_BL, brightness);
         }
     }
 
@@ -640,12 +653,21 @@ public:
 
                     TFT_eSprite row = TFT_eSprite(gui->tft);
                     row.createSprite(gui->tft->width(), texth + MI_FONT_PADDING);
-                    row.setFreeFont(MI_FREE_FONT);
-                    row.setTextSize(1*MI_SCALE);
                     row.setTextWrap(true);
                     row.setTextColor(TFT_BLACK);
                     row.fillRect(0, 0, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
                     row.setCursor(MI_FONT_PADDING, 0);
+
+                    row.setTextFont(1);
+                    row.setTextSize(1);
+                    row.printf("%02d:%02d", m.hh, m.mm);
+                    uint16_t fx = row.getCursorX();
+                    row.setCursor(MI_FONT_PADDING, 8);
+                    row.printf("[%d]", m.repeats);
+
+                    row.setCursor(fx + 2, 0);
+                    row.setFreeFont(MI_FREE_FONT);
+                    row.setTextSize(1*MI_SCALE);
                     row.print(m.msg);
                     row.pushSprite(0, y);
 
@@ -695,7 +717,8 @@ public:
         if (c == 0x0A) {
             // send
             if (pos < 1) return;
-            this->outmessages->push_back(message(buffer, 12, this->messages->size(), true));
+            
+            this->outmessages->push_back(message(buffer, 0, 0, true));
             buffer[0] = 0;
             invalidate();
         } else if (c == 0x08) {
