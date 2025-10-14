@@ -704,7 +704,7 @@ public:
                 buffer[(pos--)-1] = 0;
                 invalidate();
             }
-        } else if (c >= 32 && c <= 0x95) { // extended for latvian chars
+        } else if (c >= 32 && c <= 0x96) { // extended for latvian chars
             size_t pos = strlen(buffer);
             if (pos < bufsize) buffer[pos] = c; buffer[pos+1] = 0;
             invalidate();
