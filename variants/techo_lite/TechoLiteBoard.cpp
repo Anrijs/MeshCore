@@ -16,8 +16,9 @@ void TechoLiteBoard::begin() {
     pinMode(PIN_VBAT_READ_EN, OUTPUT);
 
     // 3.3V Power ON
-    pinMode(RT9080_EN, OUTPUT);
-    digitalWrite(RT9080_EN, HIGH);
+    pinMode(SX126X_POWER_EN, OUTPUT);
+    digitalWrite(SX126X_POWER_EN, HIGH);
+    delay(10);   // give sx1262 some time to power up
 
     // init onboard LEDs
 #ifdef PIN_LED1
