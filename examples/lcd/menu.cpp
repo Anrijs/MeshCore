@@ -111,6 +111,7 @@ void GUI::onInput(char c) {
     if (c == 0x1B) {
         pop();
     } else if (t9mode) {
+        // keypad code
         if ((c >= '0' && c <= '9') || c == '*' || c == '#') {
             int8_t ckey = 0;
             if (c == '*') ckey = 10;
@@ -124,6 +125,8 @@ void GUI::onInput(char c) {
 
             t9time = millis();
             t9key = ckey;
+        } else if (c == 0x08 && t9active()) {
+            t9cancel();
         } else {
             page->onInput(c);
         }
@@ -142,33 +145,48 @@ void GUI::stack(Page* next) {
     }
 }
 
-void GUI::t9commit() {
-    t9mode = false;
-    onInput(t9Chars[t9key][t9pos]);
-    t9mode = true;
+bool GUI::t9active() {
+    return t9key >= 0 && t9time > 0;
+}
+
+void GUI::t9cancel() {
+    bool active = t9active();
+    t9time = 0;
+    t9pos = 0;
+    t9key = -1;
+
     t9time = 0;
     t9pos = 0;
     t9key = -1;
 
     // TODO: draw on bottom
-    uint16_t w = tft->width();
-    uint16_t h = tft->height();
-    tft->setTextSize(2*MI_SCALE);
-    uint16_t th = tft->fontHeight();
-    uint16_t p = 4; // text padding
-    uint16_t d = th + p + p; // box size
-    uint16_t x = (w - d) / 2;
-    uint16_t y = (h - d) / 2;
-    tft->fillRect(x,y,d,d, TFT_WHITE);
-    if (page) page->invalidate();
-    draw();
+    if (active) {
+        uint16_t w = tft->width();
+        uint16_t h = tft->height();
+        tft->setTextSize(2*MI_SCALE);
+        uint16_t th = tft->fontHeight();
+        uint16_t p = 4; // text padding
+        uint16_t d = th + p + p; // box size
+        uint16_t x = (w - d) / 2;
+        uint16_t y = (h - d) / 2;
+        tft->fillRect(x,y,d,d, TFT_WHITE);
+        if (page) page->invalidate();
+        draw();
+    }
+}
+
+void GUI::t9commit() {
+    t9mode = false;
+    onInput(t9Chars[t9key][t9pos]);
+    t9mode = true;
+    t9cancel();
 }
 
 void GUI::loop()  {
     static int8_t lastkey = -1;
     static int8_t lastpos = -1;
     // Check T9
-    if (t9key >= 0 && t9time > 0) {
+    if (t9active()) {
         if (millis() >= (t9time + t9timeout)) {
            t9commit();
            lastkey = -1;
@@ -199,8 +217,6 @@ void GUI::loop()  {
             row.setCursor((d - fw) / 2,  + p);
             row.print(getT9char());
             row.pushSprite(x, y);
-
-
 
             lastkey = t9key;
             lastpos = t9pos;

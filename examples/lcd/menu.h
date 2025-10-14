@@ -1,5 +1,4 @@
-#ifndef MENU_H
-#define MENU_H
+#pragma once
 
 /*
 
@@ -147,6 +146,8 @@ public:
     void pop();
     void loop();
     void t9commit();
+    void t9cancel();
+    bool t9active();
 };
 
 
@@ -711,5 +712,3 @@ public:
         }
     };
 };
-
-#endif
