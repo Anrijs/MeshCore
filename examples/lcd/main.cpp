@@ -35,14 +35,8 @@ TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
 GUI gui(&tft);
 
-struct NodePrefs {  // persisted to file
-  float airtime_factor;
-  char node_name[32];
-  double node_lat, node_lon;
-  float freq;
-  uint8_t tx_power_dbm;
-  uint8_t unused[3];
-} prefs;
+char battstr[16] = "";
+char uptimestr[16] = "0d 00:00:00";
 
 struct {
   struct {
@@ -600,6 +594,7 @@ bool miActionBrightnessP(MIAction* action) {
   else if (brightness < 32) step = 2;
   else if (brightness < 64) step = 4;
   gui.setBrightness(brightness + step);
+  return true;
 }
 
 bool miActionBrightnessM(MIAction* action) {
@@ -609,6 +604,7 @@ bool miActionBrightnessM(MIAction* action) {
   else if (brightness < 32) step = 2;
   else if (brightness < 64) step = 4;
   gui.setBrightness(brightness - step);
+  return true;
 }
 
 void setupMenu() {
@@ -621,8 +617,8 @@ void setupMenu() {
   menu.home.m->add(menu.home.contacts);
   menu.home.m->add(menu.home.settings);
   menu.home.m->add(menu.home.flood);
-  menu.home.m->add(new MIString(&gui, "Battery", the_mesh.battstr, 15));
-  menu.home.m->add(new MIString(&gui, "Uptime", the_mesh.uptimestr, 15));
+  menu.home.m->add(new MIString(&gui, "Battery", battstr, 15));
+  menu.home.m->add(new MIString(&gui, "Uptime", uptimestr, 15));
 
 
   // dev stuff
@@ -743,21 +739,29 @@ void setup() {
   delete hello;
 }
 
-String hexy(const char* in) {
-  String out;
-  char hex[6];
-  for (int i=0;i<strlen(in);i++) {
-    if (i > 0) out += ":";
-    sprintf(hex, "%02X", in[i]);
-    out += hex;
-  }
-  return out;
-}
-
-
 void loop() {
+  static long batRead = 0;
+  static long guiUpdate = 0;
+  
   the_mesh.loop();
-  delay(2);
+
+  if (millis() > guiUpdate && gui.isOn()) {
+    if (millis() > batRead) {
+      uint16_t mv = board.getBattMilliVolts();
+      sprintf(battstr, "%.2f V", (mv / 1000.0));
+      batRead = millis() + 10000;
+    }
+
+    long totalSeconds = millis() / 1000;
+    int days    = totalSeconds / 86400;
+    int hours   = (totalSeconds % 86400) / 3600;
+    int minutes = (totalSeconds % 3600) / 60;
+    int seconds = totalSeconds % 60;
+        
+    sprintf(uptimestr, "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
+    guiUpdate = millis() + 1000;
+  }
+
 
   if (digitalRead(BTN_WAKE) == 0) {
     if (gui.isOn()) {
