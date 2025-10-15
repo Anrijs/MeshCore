@@ -25,6 +25,8 @@
 #include <cstdlib>
 #include <MeshCore.h>
 #include <Packet.h>
+#include <helpers/ChannelDetails.h>
+#include <helpers/ContactInfo.h>
 #include "font.h"
 
 #define LIGHT_MODE
@@ -54,15 +56,20 @@
 
 // TODO: add channel/user ref
 struct message {
+    ChannelDetails* ch;
+    ContactInfo* ci;
     uint8_t hash[MAX_HASH_SIZE];
     String msg;
     uint8_t hh;
     uint8_t mm;
     int8_t repeats = 0;
     bool me;
+    bool read = false;
 
-    message(char* buf, uint8_t hh, uint8_t mm, bool me): msg(buf), hh(hh), mm(mm), me(me) { };
-    message(String str, uint8_t hh, uint8_t mm, bool me): msg(str), hh(hh), mm(mm), me(me) { };
+    message(ChannelDetails* ch, char* buf, uint8_t hh, uint8_t mm, bool me): ch(ch), msg(buf), hh(hh), mm(mm), me(me) { };
+    message(ChannelDetails* ch, String str, uint8_t hh, uint8_t mm, bool me): ch(ch), msg(str), hh(hh), mm(mm), me(me) { };
+    message(ContactInfo* ci, char* buf, uint8_t hh, uint8_t mm, bool me): ci(ci), msg(buf), hh(hh), mm(mm), me(me) { };
+    message(ContactInfo* ci, String str, uint8_t hh, uint8_t mm, bool me): ci(ci), msg(str), hh(hh), mm(mm), me(me) { };
 
     void setHash(uint8_t* src) {
         memcpy(&hash, hash, MAX_HASH_SIZE);
@@ -73,10 +80,17 @@ struct message {
     }
 };
 
+enum PageType {
+    PAGE_TYPE_CUSTOM,
+    PAGE_TYPE_MENU,
+    PAGE_TYPE_CHANNEL
+};
+
 class GUI;
 class Menu;
 class Page;
 class MI;
+class Channel;
 
 class GUI {
     struct {
@@ -112,9 +126,13 @@ class GUI {
 public:
     TFT_eSPI* tft;
     Page* page = nullptr;
+    std::vector<message>* messages;
+    std::vector<message>* outmessages;
 
-    GUI(TFT_eSPI* tft) {
+    GUI(TFT_eSPI* tft, std::vector<message>* in, std::vector<message>* out) {
         this->tft = tft;
+        this->messages = in;
+        this->outmessages = out;
     }
 
     bool isOn() {
@@ -499,10 +517,10 @@ protected:
     }
 };
 
-class MIPage: public MILabel {
+class MIPage: public MIValue {
     Page* next = nullptr;
 public:
-    MIPage(GUI* gui, const char* label, Page* page): MILabel(gui, label) {
+    MIPage(GUI* gui, const char* label, Page* page): MIValue(gui, label, nullptr) {
         next = page;
         ro = true;
     }
@@ -515,6 +533,8 @@ public:
             }
         }
     };
+
+    String getValueString() override;
 };
 
 class MIAction: public MILabel {
@@ -534,11 +554,14 @@ public:
 };
 
 class Page: public GUIElement {
+private:
+    PageType type = PAGE_TYPE_CUSTOM;
 public:
-    Page(GUI* gui): GUIElement(gui) { }
+    Page(GUI* gui, PageType type): GUIElement(gui), type(type) { }
     virtual void draw();
     virtual void onInput(char c);
     virtual bool onPop() { return true; };
+    const PageType getType() { return type; }
 };
 
 class Menu: public Page {
@@ -556,7 +579,7 @@ class Menu: public Page {
 
 public:
     bool wrap = false;
-    Menu(GUI* gui, const char* label): Page(gui) {
+    Menu(GUI* gui, const char* label): Page(gui, PAGE_TYPE_MENU) {
         title = new MIString(gui, label, pageno, 8);
     }
 
@@ -579,13 +602,13 @@ public:
 
 class Boot: public Page {
     public:
-    Boot(GUI* gui): Page(gui) {}
+    Boot(GUI* gui): Page(gui, PAGE_TYPE_CUSTOM) {}
     void draw() override;
 };
 
 class Keeb: public Page {
     public:
-    Keeb(GUI* gui): Page(gui) {}
+    Keeb(GUI* gui): Page(gui, PAGE_TYPE_CUSTOM) {}
     void draw() override {
         uint16_t h = gui->tft->height();
         uint16_t w = gui->tft->width();
@@ -605,20 +628,23 @@ class Keeb: public Page {
 
 class Channel: public Page {
     // TODO: feed messages from mesh
+    ChannelDetails* ch = nullptr;
+    ContactInfo* ci = nullptr;
     char buffer[128] = "";
     size_t bufsize = 128;
-    std::vector<message>* messages;
-    std::vector<message>* outmessages;
     int lastsize = -1;
+    int read = 0;
 
     bool onPop() override {
         lastsize = -1;
         return true;
     }
 public:
-    Channel(GUI* gui, std::vector<message>* in, std::vector<message>* out): Page(gui) { 
-        this->messages = in;
-        this->outmessages = out;
+    Channel(GUI* gui, ChannelDetails* ch): Page(gui, PAGE_TYPE_CHANNEL) {
+        this->ch = ch;
+    }
+    Channel(GUI* gui, ContactInfo* ci): Page(gui, PAGE_TYPE_CHANNEL) {
+        this->ci = ci;
     }
     int stripes[4] = {
         0xFFFF,
@@ -634,21 +660,27 @@ public:
             drawInput(y);
 
             long start = millis();
-            if (messages->size() != lastsize) {
+            if (gui->messages->size() != lastsize) {
                 // TODO: size may be truncated 
                 gui->tft->setTextSize(1*MI_SCALE);
                 gui->tft->setTextWrap(true);
-                lastsize = messages->size();
+                lastsize = gui->messages->size();
                 uint16_t ih = gui->tft->fontHeight();
+                read = 0;
                 for (int i = lastsize - 1; i >= 0; i--) {
-                    message m = messages->at(i);
+                    message& m = gui->messages->at(i);
+                    if (this->ch && this->ch != m.ch) continue;
+                    if (this->ci && this->ci != m.ci) continue;
+
+                    m.read = true;
+
                     int16_t textw = gui->tft->textWidth(m.msg);
                     // textw += gui->tft->textWidth("00:00 ");
                     int16_t lines = (textw / gui->tft->width()) + 1;
                     int16_t texth = (lines * MI_FONT_HEIGHT);
 
                     y -= texth + MI_FONT_PADDING;
-                    uint16_t color = i % 2;
+                    uint16_t color = read % 2;
                     if (m.me) color += 2;
 
                     TFT_eSprite row = TFT_eSprite(gui->tft);
@@ -670,6 +702,8 @@ public:
                     row.setTextSize(1*MI_SCALE);
                     row.print(m.msg);
                     row.pushSprite(0, y);
+
+                    read++;
 
                     // gui->tft->fillRect(0, y, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
                     // gui->tft->setCursor(MI_FONT_PADDING, y);
@@ -718,7 +752,11 @@ public:
             // send
             if (pos < 1) return;
             
-            this->outmessages->push_back(message(buffer, 0, 0, true));
+            if (this->ch) {
+                this->gui->outmessages->push_back(message(this->ch, buffer, 0, 0, true));
+            } else if (this->ci) {
+                this->gui->outmessages->push_back(message(this->ci, buffer, 0, 0, true));
+            }
             buffer[0] = 0;
             invalidate();
         } else if (c == 0x08) {
@@ -734,4 +772,9 @@ public:
             invalidate();
         }
     };
+
+    int getRead() const { return read; }
+
+    ChannelDetails* getChanel() const { return ch; }
+    ContactInfo* getContact() const { return ci; }
 };

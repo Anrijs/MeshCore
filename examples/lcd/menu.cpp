@@ -181,6 +181,8 @@ void GUI::t9cancel() {
         uint16_t x = (w - d) / 2;
         uint16_t y = (h - d) / 2;
         tft->fillRect(x,y,d,d, TFT_WHITE);
+        tft->setTextSize(1*MI_SCALE);
+
         if (page) page->invalidate();
         draw();
     }
@@ -210,6 +212,7 @@ void GUI::loop()  {
             tft->setFreeFont(MI_FREE_FONT);
             tft->setTextSize(2*MI_SCALE);
             uint16_t th = tft->fontHeight();
+            tft->setTextSize(1*MI_SCALE);
 
             uint16_t p = 4; // text padding
             uint16_t d = th + p + p; // box size
@@ -237,6 +240,27 @@ void GUI::loop()  {
     if (lcdOn && millis() > lcdOff) {
         sleep();
     }
+}
+
+String MIPage::getValueString() {
+    if (next && next->getType() == PAGE_TYPE_CHANNEL) {
+        Channel* ch = (Channel*) next;
+        ChannelDetails* channel = ch->getChanel();
+        ContactInfo* contact = ch->getContact();
+        int unread = 0;
+
+        for (int i = 0; i < gui->messages->size(); i++) {
+            message m = gui->messages->at(i);
+            if (m.read) continue;
+            if (channel && channel == m.ch) unread++;
+            if (contact && contact == m.ci) unread++;
+        }
+
+        if (unread > 0) {
+            return String(unread);
+        }
+    }
+    return "";
 }
 
 const char* const GUI::t9Chars[12] = {

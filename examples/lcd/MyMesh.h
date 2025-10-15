@@ -21,7 +21,6 @@
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS 250
 
 #define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRXNcg=="
-//#define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRYMcg=="
 
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
@@ -84,9 +83,12 @@ public:
   NodePrefs _prefs;
   ChannelDetails* _public;
 
-  std::vector<message> outmessages;
+  std::vector<message>* messages;
+  std::vector<message>* outmessages;
 
-  MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LcdMeshTables& tables, GUI* gui);
+  std::vector<ChannelDetails*> channels;
+
+  MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LcdMeshTables& tables, GUI* gui, std::vector<message>* messages, std::vector<message>* outmessages);
 
   float getFreqPref() const { return _prefs.freq; }
   uint8_t getTxPowerPref() const { return _prefs.tx_power_dbm; }

@@ -16,13 +16,16 @@
 #include "MeshTables.h"
 #include <helpers/BaseChatMesh.h>
 
+std::vector<message> messages;
+std::vector<message> outmessages;
+
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
-GUI gui(&tft);
+GUI gui(&tft, &messages, &outmessages);
 
 StdRNG fast_rng;
 LcdMeshTables tables(&gui);
-MyMesh the_mesh(radio_driver, fast_rng, *new VolatileRTCClock(), tables, &gui); // TODO: test with 'rtc_clock' in target.cpp
+MyMesh the_mesh(radio_driver, fast_rng, *new VolatileRTCClock(), tables, &gui, &messages, &outmessages);
 
 char battstr[16] = "";
 char uptimestr[16] = "0d 00:00:00";
@@ -172,10 +175,6 @@ void setupMenu() {
   //menu.settings.radio.m->add(menu.settings.radio.sf);
   //menu.settings.radio.m->add(menu.settings.radio.cr);
   menu.settings.radio.m->add(menu.settings.radio.tx);
-
-  Channel* pub = new Channel(&gui, tables.getMessages(), &the_mesh.outmessages);
-  MIPage* mipub = new MIPage(&gui, "Public", pub);
-  menu.channels.m->add(mipub);
 }
 
 void setup() {
@@ -206,12 +205,32 @@ void setup() {
   InternalFS.begin();
   the_mesh.begin(InternalFS);
 
+  // ch must be crated after mesh
+  Channel* pub = new Channel(&gui, the_mesh._public);
+  MIPage* mipub = new MIPage(&gui, "Public", pub);
+  menu.channels.m->add(mipub);
+
+
   radio_set_params(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
   radio_set_tx_power(the_mesh.getTxPowerPref());
 
   gui.page = menu.home.m;
   gui.draw();
   delete hello;
+
+    // get all contacts
+  ContactsIterator iter = the_mesh.startContactsIterator();
+  ContactInfo contact;
+
+  while (iter.hasNext(&the_mesh, contact)) {
+    if (contact.type != ADV_TYPE_CHAT) continue;
+
+    ContactInfo* ci = the_mesh.lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE);
+    Serial.printf("Add %s\n", ci->name);
+    Channel* con = new Channel(&gui, ci);
+    MIPage* micon = new MIPage(&gui, ci->name, con);
+    menu.contacts.m->add(micon);
+  }
 }
 
 void loop() {
@@ -259,9 +278,9 @@ void loop() {
 
   gui.loop();
 
-  if (the_mesh.outmessages.size() > 0) {
-    message m = the_mesh.outmessages.front();
-    the_mesh.outmessages.pop_back();
+  if (the_mesh.outmessages->size() > 0) {
+    message m = the_mesh.outmessages->front();
+    the_mesh.outmessages->pop_back();
 
     uint8_t temp[5+MAX_TEXT_LEN+32];
     uint32_t timestamp = the_mesh.getRTCClock()->getCurrentTime();
@@ -269,7 +288,11 @@ void loop() {
     temp[4] = 0;  // attempt and flags
 
     String utf8str = ascii2utf(m.msg);
-    sprintf((char *) &temp[5], "%s: %s", the_mesh._prefs.node_name, utf8str.c_str());  // <sender>: <msg>
+    if (m.ch) {
+      sprintf((char *) &temp[5], "%s: %s", the_mesh._prefs.node_name, utf8str.c_str());  // <sender>: <msg>
+    } else {
+      sprintf((char *) &temp[5], "%s", utf8str.c_str());  // <sender>: <msg>
+    }
     temp[5 + MAX_TEXT_LEN] = 0;  // truncate if too long
 
     DateTime dt(timestamp + the_mesh.gmtOffset);
@@ -277,11 +300,16 @@ void loop() {
     m.mm = dt.minute();
 
     int len = strlen((char *) &temp[5]);
-    auto pkt = the_mesh.createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, the_mesh._public->channel, temp, 5 + len);
-    m.setHash(pkt);
-    tables.getMessages()->push_back(m);
-
+    mesh::Packet* pkt;
+    if (m.ch) {
+      pkt = the_mesh.createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, m.ch->channel, temp, 5 + len);
+    } else if (m.ci) {
+      pkt = the_mesh.createDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci->id, m.ci->shared_secret, temp, 5 + len); // createGroupDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci, temp, 5 + len);
+    }
+    
     if (pkt) {
+      m.setHash(pkt);
+      gui.messages->push_back(m);
       the_mesh.sendFlood(pkt);
       Serial.println("   Sent.");
     } else {

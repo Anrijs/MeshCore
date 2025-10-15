@@ -1,8 +1,10 @@
 #include "MyMesh.h"
 #include "utf2ascii.h"
 
-MyMesh::MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LcdMeshTables& tables, GUI* gui)
+MyMesh::MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LcdMeshTables& tables, GUI* gui, std::vector<message>* messages, std::vector<message>* outmessages)
     : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
+      messages(messages),
+      outmessages(outmessages),
       gui(gui) {
   // defaults
   memset(&_prefs, 0, sizeof(_prefs));
@@ -50,6 +52,7 @@ void MyMesh::begin(FILESYSTEM& fs) {
 
   loadContacts();
   _public = addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
+  channels.push_back(_public);
 }
 
 void MyMesh::savePrefs() {
@@ -174,6 +177,17 @@ void MyMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t 
   if (strcmp(text, "clock sync") == 0) {  // special text command
     setClock(sender_timestamp + 1);
   }
+
+  String out = utf8ascii(text);
+  ContactInfo* ci = lookupContactByPubKey(from.id.pub_key, PUB_KEY_SIZE);
+
+  if (ci) {
+    DateTime dt(sender_timestamp + gmtOffset);
+    messages->push_back(message(ci, out.c_str(), dt.hour(), dt.minute(), false));
+    gui->draw(true);
+  } else {
+    Serial.printf("onMessageRecv: Contact not found\n", from.name);
+  }
 }
 
 void MyMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t timestamp, const char *text) {
@@ -187,9 +201,19 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packe
   uint32_t ack;
   memcpy(&ack, pkt->payload, 4);
 
-  DateTime dt(timestamp + gmtOffset);
-  getMeshTables()->getMessages()->push_back(message(out.c_str(), dt.hour(), dt.minute(), false));
-  gui->draw(true);
+  ChannelDetails* ch = nullptr;
+  for (ChannelDetails* c : channels) {
+    if (memcmp(channel.secret, c->channel.secret, PUB_KEY_SIZE) == 0) {
+      ch = c;
+      break;
+    }
+  }
+
+  if (ch) {
+    DateTime dt(timestamp + gmtOffset);
+    messages->push_back(message(ch, out.c_str(), dt.hour(), dt.minute(), false));
+    gui->draw(true);
+  }
 }
 
 void MyMesh::sendSelfAdvert(int delay_millis) {
