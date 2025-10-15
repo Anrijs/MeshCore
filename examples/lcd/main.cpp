@@ -204,6 +204,7 @@ void setup() {
 
   InternalFS.begin();
   the_mesh.begin(InternalFS);
+  the_mesh.getRTCClock()->setCurrentTime(BUILD_TIME_EPOCH);
 
   // ch must be crated after mesh
   Channel* pub = new Channel(&gui, the_mesh._public);
