@@ -9,6 +9,7 @@
 
 #include <SPIFFS.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include "time.h"
 #include <queue>
 #include <HTTPClient.h>
@@ -141,8 +142,10 @@ struct NodePrefs {  // persisted to file
 };
 
 struct WiFiPrefs {
+  uint8_t version = 1;
   char ssid[33];
   char password[64];
+  int8_t txpower = WIFI_POWER_8_5dBm;
 };
 
 struct LogPrefs {
@@ -684,8 +687,21 @@ public:
     if (_fs->exists("/wifi_prefs")) {
       File file = _fs->open("/wifi_prefs");
       if (file) {
-        file.read((uint8_t *) &_wifi, sizeof(_wifi));
+        int read = file.read((uint8_t *) &_wifi, sizeof(_wifi));
         file.close();
+
+        // migrate
+        if (read <= 97) {
+          uint8_t* dst = (uint8_t *) &_wifi;
+
+          // v0
+          WiFiPrefs tmp;
+          memcpy(&tmp, dst, sizeof(_wifi)); // unaligned
+          memcpy(dst+ 1, &tmp, sizeof(_wifi) - 1); // 
+          _wifi.version = 1;
+          _wifi.txpower = WIFI_POWER_8_5dBm;
+          saveWiFiPrefs();
+        }
       }
     }
 
@@ -717,9 +733,12 @@ public:
       return;
     }
     if (enable) {
-      Serial.printf("WiFi: Conencting to %s\n", _wifi.ssid);
       WiFi.mode(WIFI_STA);
       WiFi.begin(_wifi.ssid, _wifi.password);
+      if (esp_wifi_set_max_tx_power(_wifi.txpower) != ESP_OK) {
+        Serial.println("failed to set tx power");
+      }
+      WiFi.setAutoReconnect(true);
     } else {
       Serial.println("WiFi: Disconencting");
       WiFi.disconnect();
@@ -951,8 +970,36 @@ public:
         StrHelper::strncpy(_wifi.password, &config[9], sizeof(_wifi.password));
         saveWiFiPrefs();
         Serial.println("  OK");
+      } else if (memcmp(config, "tx ", 3) == 0) {
+        float f = atof(&config[3]);
+        if (f < 2.0 || f > 21.0) {
+          Serial.println("Invalid value. Must be in range 2 .. 21");
+        } else {
+        // txval should be in range [8, 84]
+          int txval = f * 4;
+          _wifi.txpower = txval;
+          saveWiFiPrefs();
+        }
       } else {
-        Serial.printf("  WiFi Conencted: %u\n", WiFi.status() == WL_CONNECTED);
+        String status = "";
+        int wstatus = WiFi.status();
+        switch (wstatus) {
+          case WL_IDLE_STATUS:     status = "Idle"; break;
+          case WL_NO_SSID_AVAIL:   status = "No SSID Available"; break;
+          case WL_SCAN_COMPLETED:  status = "Scan Completed"; break;
+          case WL_CONNECTED:       status = "Connected"; break;
+          case WL_CONNECT_FAILED:  status = "Connection Failed"; break;
+          case WL_CONNECTION_LOST: status = "Connection Lost"; break;
+          case WL_DISCONNECTED:    status = "Disconnected"; break;
+          default:                 status = "Unknown"; break;
+        }
+
+        Serial.printf("  WiFi Status: %s (%u)\n", status.c_str(), wstatus);
+        Serial.printf("  WiFi Config:\n");
+        Serial.printf("    Version:   %u\n", _wifi.version);
+        Serial.printf("    SSID:      %s\n", _wifi.ssid);
+        Serial.printf("    Tx Power:  %.2f\n", _wifi.txpower / 4.0);
+        Serial.println();
       }
     } else if (memcmp(command, "log ", 4) == 0) {
       const char* config = &command[4];
