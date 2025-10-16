@@ -55,9 +55,15 @@ void Menu::draw() {
 
         if (y > gui->tft->height()) break;
     }
-    if (fill && y < gui->tft->height()) {
-        gui->tft->fillRect(0, y, gui->tft->width(), gui->tft->height() - y, MI_COLOR_BKG);
-        fill = false;
+    if (y < gui->tft->height()) {
+        TFT_eSprite row = TFT_eSprite(gui->tft);
+        row.createSprite(gui->tft->width(), 16);
+        row.fillRect(0, 0, gui->tft->width(), 16, MI_COLOR_BKG);
+
+        while(y < gui->tft->height()) {
+            row.pushSprite(0, y);
+            y += 16;
+        }
     }
     onDraw();
 }
