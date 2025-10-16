@@ -28,6 +28,7 @@ LcdMeshTables tables(&gui);
 MyMesh the_mesh(radio_driver, fast_rng, *new VolatileRTCClock(), tables, &gui, &messages, &outmessages);
 
 char battstr[16] = "";
+char nfstr[16] = "";
 char uptimestr[16] = "0d 00:00:00";
 
 struct {
@@ -37,6 +38,9 @@ struct {
     MIPage* channels;
     MIPage* settings;
     MIAction* flood;
+    MIString* nf;
+    MIString* batt;
+    MIString* uptime;
   } home;
 
   struct {
@@ -120,13 +124,19 @@ void setupMenu() {
   menu.home.channels = new MIPage(&gui, "Channels", menu.channels.m);
   menu.home.contacts = new MIPage(&gui, "Contacts", menu.contacts.m);
   menu.home.settings = new MIPage(&gui, "Settings", menu.settings.m);
+  menu.home.nf = new MIString(&gui, "Noise Floor", nfstr, 15);
+  menu.home.batt = new MIString(&gui, "Battery", battstr, 15);
+  menu.home.uptime = new MIString(&gui, "Uptime", uptimestr, 15);
+
+
   menu.home.flood = new MIAction(&gui, "Flood", &miActionFlood);
   menu.home.m->add(menu.home.channels);
   menu.home.m->add(menu.home.contacts);
   menu.home.m->add(menu.home.settings);
   menu.home.m->add(menu.home.flood);
-  menu.home.m->add(new MIString(&gui, "Battery", battstr, 15));
-  menu.home.m->add(new MIString(&gui, "Uptime", uptimestr, 15));
+  menu.home.m->add(menu.home.nf);
+  menu.home.m->add(menu.home.batt);
+  menu.home.m->add(menu.home.uptime);
 
 
   // dev stuff
@@ -245,6 +255,7 @@ void loop() {
       uint16_t mv = board.getBattMilliVolts();
       sprintf(battstr, "%.2f V", (mv / 1000.0));
       batRead = millis() + 10000;
+      menu.home.batt->invalidate();
     }
 
     long totalSeconds = millis() / 1000;
@@ -252,9 +263,16 @@ void loop() {
     int hours   = (totalSeconds % 86400) / 3600;
     int minutes = (totalSeconds % 3600) / 60;
     int seconds = totalSeconds % 60;
-        
+
+    sprintf(nfstr, "%d", radio_driver.getNoiseFloor());
     sprintf(uptimestr, "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
     guiUpdate = millis() + 1000;
+    menu.home.uptime->invalidate();
+    menu.home.nf->invalidate();
+
+    if (gui.page == menu.home.m) {
+      menu.home.m->draw();
+    }
   }
 
   if (Serial.available()) {
