@@ -94,17 +94,31 @@ void Menu::onInput(char c) {
 }
 
 void Boot::draw() {
-    gui->tft->fillScreen(0x10c5);
-    //gui->tft->setFreeFont(MI_FREE_FONT);
+    uint16_t h = 32;
+    TFT_eSprite row = TFT_eSprite(gui->tft);
+    row.createSprite(gui->tft->width(), h);
+    row.fillRect(0, 0, gui->tft->width(), h, 0x10c5);
 
+    uint16_t y = 0;
+    while (y < gui->tft->height()) {
+        row.pushSprite(0, y);
+        y+= h;
+    }
+
+    gui->tft->setFreeFont(MI_FREE_FONT);
     gui->tft->setTextColor(TFT_WHITE);
     gui->tft->setTextSize(3*MI_SCALE);
-    gui->tft->setCursor(10, 40);
-    gui->tft->print("MESHCORE");
+
+    // Bold text
+    gui->tft->setCursor(10, 10);
+    gui->tft->print("MeshKey GUI");
+    gui->tft->setCursor(10+1, 10+1);
+    gui->tft->print("MeshKey GUI");
+
     gui->tft->setTextColor(TFT_YELLOW);
     gui->tft->setTextSize(1*MI_SCALE);
-    gui->tft->setCursor(20, 67);
-    gui->tft->print("MC: v1.9.0, GUI: v0.1");
+    gui->tft->setCursor(10, 58);
+    gui->tft->print("MeshCore: v1.9.0, GUI: v0.1");
 }
 
 void GUI::pop() {
