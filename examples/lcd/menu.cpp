@@ -156,6 +156,9 @@ void GUI::onInput(char c) {
             t9key = ckey;
         } else if (c == 0x08 && t9active()) {
             t9cancel();
+        } else if (c == 0x0A && t9active()) {
+            t9commit();
+            page->onInput(c);
         } else {
             page->onInput(c);
         }

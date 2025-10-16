@@ -112,7 +112,7 @@ class GUI {
         int size = 0;
     } pages;
 
-    const long t9timeout = 1000;
+    const long t9timeout = 750;
 
     static const char* const t9Chars[12];
 
