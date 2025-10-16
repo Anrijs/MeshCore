@@ -47,9 +47,7 @@ void Menu::draw() {
     for (auto &mi: menuitems) {
         //mi->draw(); // it should have position coocked in
         uint16_t color = MI_COLOR_BKG;
-        if (pos == selected) {
-            color = mi->editing ? MI_COLOR_EDITING_BKG : MI_COLOR_SELECTED_BKG;
-        }
+        if (pos == selected) color = MI_COLOR_SELECTED_BKG;
         pos++;
 
         if (skip-- > 0) continue;

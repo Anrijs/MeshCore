@@ -215,7 +215,6 @@ public:
 */
 class MI: public GUIElement {
 public:
-    bool editing = false;
     bool ro = false;
     MI(GUI* gui): GUIElement(gui) { }
     virtual void draw(uint16_t &y, uint16_t bkg) { };
@@ -376,12 +375,9 @@ public:
 
     void onInput(char c) override {
         if (c == '\n') {
-            if (editing) commit();
-            editing = !editing;
             return;
         }
 
-        if (!editing) return;
         int pos = strlen(buffer);
 
         if (flags & MI_TEXT_FLAG_TEXT) {
