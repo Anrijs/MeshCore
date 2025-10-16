@@ -218,6 +218,7 @@ public:
     bool ro = false;
     MI(GUI* gui): GUIElement(gui) { }
     virtual void draw(uint16_t &y, uint16_t bkg) { };
+    virtual void overlay(TFT_eSprite* spr) { };
     virtual void onInput(char c) { };
     virtual bool isSelectable() { return true; }
 };
@@ -261,6 +262,7 @@ public:
         row.fillRect(0,0,w,h,bkg);
         row.setCursor(MI_FONT_PADDING,MI_FONT_PADDING);
         row.print(label);
+        overlay(&row);
         if (redraw) row.pushSprite(0, y);
         y += row.getCursorY() + MI_FONT_HEIGHT + MI_FONT_PADDING;
 
@@ -274,24 +276,19 @@ protected:
     bool invalid = false;
 public:
     MIValue(GUI* gui, const char* label, void* value): MILabel(gui, label) { this->value = value; }
-    virtual void drawValue(uint16_t &y) { // Default is string value. May override with custom view, like bool switch
-        if (!redraw) return;
+    virtual void overlay(TFT_eSprite* spr) { // Default is string value. May override with custom view, like bool switch
+        if (!spr) return;
 
-        uint16_t w = gui->tft->width();
+        String str = getValueString();       
+        spr->setFreeFont(MI_FREE_FONT);
+        spr->setTextSize(1 * MI_SCALE);
 
-        String str = getValueString();
-        uint16_t ww = gui->tft->textWidth(str);
-        y += MI_FONT_PADDING;
-
-        gui->tft->setCursor(w - ww - MI_FONT_PADDING, y);
-        gui->tft->setTextColor(invalid ? MI_COLOR_INVALID_VALUE : MI_COLOR_VALUE);
-        gui->tft->setTextWrap(false);
-        gui->tft->print(str);
-
-        if (invalid) { // Thick
-            gui->tft->setCursor(w - ww - MI_FONT_PADDING - 1, y);
-            gui->tft->print(str);
-        }
+        uint16_t tw = spr->textWidth(str);
+        uint16_t th = spr->fontHeight();
+        
+        spr->setCursor(spr->width() - MI_FONT_PADDING - tw, MI_FONT_PADDING);
+        spr->setTextColor(invalid ? MI_COLOR_INVALID_VALUE : MI_COLOR_VALUE);
+        spr->print(str);
     }
 
     virtual String getValueString() { return "not implemented"; }
@@ -300,7 +297,6 @@ public:
         bool rd = redraw;
         MILabel::draw(y, bkg);
         redraw = rd;
-        drawValue(y0);
         onDraw();
     };
 };
@@ -312,35 +308,6 @@ public:
     bool getb() { return *(bool*) value; }
     void setb(bool b) { *(bool*) value = b; }
 
-    void drawValue(uint16_t &y) override {
-        if (!redraw) return;
-
-        uint16_t w = gui->tft->width();
-
-        uint16_t xw = MI_FONT_HEIGHT * 2;
-        uint16_t xe = w - xw - MI_FONT_PADDING; // [* ]
-        gui->tft->drawRect(
-            xe,
-            y,
-            xw,
-            MI_FONT_HEIGHT,
-            MI_COLOR_VALUE
-        );
-
-        xe += 1;
-
-        if (getb()) {
-            xe += MI_FONT_HEIGHT;
-        }
-
-        gui->tft->fillRect(
-            xe,
-            y+1,
-            MI_FONT_HEIGHT - 2,
-            MI_FONT_HEIGHT - 2,
-            getb() ? MI_COLOR_VALUE : TFT_DARKGREY
-        );
-    }
 
     void onInput(char c) override {
         if (ro) return;
