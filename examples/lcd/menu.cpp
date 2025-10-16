@@ -180,7 +180,7 @@ void GUI::t9cancel() {
         uint16_t d = th + p + p; // box size
         uint16_t x = (w - d) / 2;
         uint16_t y = (h - d) / 2;
-        tft->fillRect(x,y,d,d, TFT_WHITE);
+        tft->fillRect(x,y,d,d, MI_COLOR_BKG);
         tft->setTextSize(1*MI_SCALE);
 
         if (page) page->invalidate();
@@ -224,8 +224,8 @@ void GUI::loop()  {
             row.createSprite(d, d);
             row.setFreeFont(MI_FREE_FONT);
             row.setTextSize(2*MI_SCALE);
-            row.setTextColor(TFT_WHITE);
-            row.fillRect(0, 0, d, d, TFT_PURPLE);
+            row.setTextColor(MI_COLOR_T9_FONT);
+            row.fillRect(0, 0, d, d, MI_COLOR_T9_BKG);
             uint16_t fw = row.textWidth(String(getT9char()));
 
             row.setCursor((d - fw) / 2,  + p);

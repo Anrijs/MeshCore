@@ -35,16 +35,30 @@
     #define MI_COLOR_TITLE_BKG TFT_LIGHTGREY
     #define MI_COLOR_BKG  TFT_WHITE
     #define MI_COLOR_SELECTED_BKG TFT_ORANGE
-    #define MI_COLOR_EDITING_BKG 0x07ff
     #define MI_COLOR_TEXT TFT_BLACK
     #define MI_COLOR_VALUE TFT_DARKGREY
     #define MI_COLOR_INVALID_VALUE TFT_RED
     #define MI_COLOR_SEPARATOR TFT_LIGHTGREY
+    #define MI_COLOR_T9_BKG TFT_PURPLE
+    #define MI_COLOR_T9_FONT TFT_WHITE
+
+    #define MI_COLOR_BKG_ALT 0xE73C
+    #define MI_COLOR_BKG_SEL 0xDF7F
+    #define MI_COLOR_BKG_SEL_ALT 0xBF1F
 #else
+    #define MI_COLOR_TITLE_BKG TFT_DARKGREY
     #define MI_COLOR_BKG  TFT_BLACK
     #define MI_COLOR_SELECTED_BKG TFT_DARKCYAN
     #define MI_COLOR_TEXT TFT_WHITE
     #define MI_COLOR_VALUE TFT_CYAN
+    #define MI_COLOR_INVALID_VALUE TFT_RED
+    #define MI_COLOR_SEPARATOR TFT_DARKGREY
+    #define MI_COLOR_T9_BKG TFT_PURPLE
+    #define MI_COLOR_T9_FONT TFT_WHITE
+
+    #define MI_COLOR_BKG_ALT 0x18C3
+    #define MI_COLOR_BKG_SEL 0x4100
+    #define MI_COLOR_BKG_SEL_ALT 0x4200
 #endif
 
 #define MI_SCALE 1
@@ -647,10 +661,10 @@ public:
         this->ci = ci;
     }
     int stripes[4] = {
-        0xFFFF,
-        0xe73c,
-        0xdf7f,
-        0xBF1F
+        MI_COLOR_BKG,
+        MI_COLOR_BKG_ALT,
+        MI_COLOR_BKG_SEL,
+        MI_COLOR_BKG_SEL_ALT
     };
 
     void draw() override {
@@ -686,7 +700,7 @@ public:
                     TFT_eSprite row = TFT_eSprite(gui->tft);
                     row.createSprite(gui->tft->width(), texth + MI_FONT_PADDING);
                     row.setTextWrap(true);
-                    row.setTextColor(TFT_BLACK);
+                    row.setTextColor(MI_COLOR_TEXT);
                     row.fillRect(0, 0, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
                     row.setCursor(MI_FONT_PADDING, 0);
 
@@ -738,9 +752,9 @@ public:
         row.setFreeFont(MI_FREE_FONT);
         row.setTextSize(1*MI_SCALE);
         row.setTextWrap(false);
-        row.setTextColor(TFT_BLACK);
-        row.drawLine(0, 0, w, y, TFT_ORANGE);
-        row.fillRect(0, 1, w, ih, TFT_WHITE);
+        row.setTextColor(MI_COLOR_TEXT);
+        row.drawLine(0, 0, w, 0, MI_COLOR_SEPARATOR);
+        row.fillRect(0, 1, w, ih, MI_COLOR_BKG);
         row.setCursor(x, 0 + MI_FONT_PADDING);
         row.print(buffer);
         row.pushSprite(0, y);
