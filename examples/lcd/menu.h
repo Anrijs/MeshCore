@@ -648,11 +648,13 @@ public:
                     message& m = gui->messages->at(i);
                     if (this->ch && this->ch != m.ch) continue;
                     if (this->ci && this->ci != m.ci) continue;
-
                     m.read = true;
-
+                    
                     int16_t textw = gui->tft->textWidth(m.msg);
-                    // textw += gui->tft->textWidth("00:00 ");
+                    gui->tft->setTextFont(1);
+                    gui->tft->setTextSize(1);
+                    textw += gui->tft->textWidth("00:00") + MI_FONT_PADDING;
+
                     int16_t lines = (textw / gui->tft->width()) + 1;
                     int16_t texth = (lines * MI_FONT_HEIGHT);
 
@@ -667,14 +669,16 @@ public:
                     row.fillRect(0, 0, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
                     row.setCursor(MI_FONT_PADDING, 0);
 
+                    // print clock
                     row.setTextFont(1);
                     row.setTextSize(1);
                     row.printf("%02d:%02d", m.hh, m.mm);
-                    uint16_t fx = row.getCursorX();
+                    uint16_t fx = row.getCursorX() + MI_FONT_PADDING;
                     row.setCursor(MI_FONT_PADDING, 8);
                     row.printf("[%d]", m.repeats);
 
-                    row.setCursor(fx + 2, 0);
+                    // print message
+                    row.setCursor(fx, 0);
                     row.setFreeFont(MI_FREE_FONT);
                     row.setTextSize(1*MI_SCALE);
                     row.print(m.msg);
