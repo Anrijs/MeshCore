@@ -25,6 +25,7 @@
 #include <helpers/IdentityStore.h>
 #include <RTClib.h>
 #include <target.h>
+#include <CayenneLPP.h>
 
 #include "LoggerMeshTables.h"
 
@@ -52,6 +53,12 @@
   #define MAX_CONTACTS         300
 #endif
 
+#define TELEMETRY_VERSION 1
+#define TELEMETRY_MAX_RULES 16
+#define TELEMETRY_DEFAULT_RETRIES 3
+#define TELEMETRY_RETRY_INTERVAL 30000 //ms
+#define TELEMETRY_MIN_INTERVAL 10800 //s, 3h
+
 #include <helpers/BaseChatMesh.h>
 
 #define SEND_TIMEOUT_BASE_MILLIS          500
@@ -60,6 +67,7 @@
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS   250
 
 #define  PUBLIC_GROUP_PSK "izOH6cXN6mrJ5e26oRXNcg=="
+#define REQ_TYPE_GET_TELEMETRY_DATA     0x03
 
 static bool ntpSynced = false;
 const char* ntpServer = "pool.ntp.org";
@@ -85,7 +93,7 @@ struct {
 
     char* msgData = new char[str.length() + 1];
     str.toCharArray(msgData, str.length() + 1);
-  
+
     // discard old
     while (queue.size() > 32) {
       discarded++;
@@ -141,6 +149,26 @@ struct NodePrefs {  // persisted to file
   uint8_t unused[3];
 };
 
+struct TelemetryRule {
+  uint8_t pubkey[PUB_KEY_SIZE]; // pubkey
+  uint8_t key_len;
+  uint8_t path[MAX_PATH_SIZE];
+  int8_t path_len;
+  char password[16];  // login password
+  uint32_t start; // second of day
+  uint32_t interval; // interval in seconds
+  uint32_t next = 0; // next run
+};
+
+struct TelemetryRules {
+  uint16_t version;
+  uint8_t retries;
+  uint8_t reserved0;
+  uint32_t reserved1;
+  uint32_t reserved2;
+  std::vector<TelemetryRule*> rules;
+};
+
 struct WiFiPrefs {
   uint8_t version = 1;
   char ssid[33];
@@ -157,16 +185,50 @@ struct LogPrefs {
   uint8_t dofwd;
 };
 
+std::vector<String> split(const char* input) {
+  std::vector<String> tokens;
+  String current = "";
+
+  while (*input != '\0') {
+    if (isSpace(*input)) {
+      if (current.length() > 0) {
+        tokens.push_back(current);
+        current = "";
+      }
+    } else {
+      current += *input;
+    }
+    input++;
+  }
+
+  if (current.length() > 0) {
+    tokens.push_back(current);
+  }
+
+  return tokens;
+}
+
+
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
   NodePrefs _prefs;
   WiFiPrefs _wifi;
   LogPrefs _logp;
+  TelemetryRules _telemetry;
   LoggerMeshTables* _tables;
   uint32_t expected_ack_crc;
   ChannelDetails* _public;
   unsigned long last_msg_sent;
+
   ContactInfo* curr_recipient;
+  ContactInfo* curr_telemetry;
+  TelemetryRule* curr_telemetry_rule;
+  uint32_t pending_login;
+  uint32_t pending_telemetry;
+  int pending_telemetry_retries = 0;
+  long pending_telemetry_next = 0;
+  long telemetry_eta = 0;
+
   char command[512+10];
   uint8_t tmp_buf[256];
   char hex_buf[512];
@@ -211,6 +273,100 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
         }
         file.close();
       }
+    }
+  }
+
+  void loadTelemetryRules() {
+    // delete old
+    Serial.println("Free telemetry memory");
+    for (TelemetryRule* r : _telemetry.rules) {
+      delete r;
+    }
+    _telemetry.rules.clear();
+
+    if (_fs->exists("/telemetry")) {
+      File file = _fs->open("/telemetry");
+      if (file) {
+        bool success = file.read((uint8_t *) &_telemetry.version, sizeof(_telemetry.version));
+        success = success && file.read((uint8_t *) &_telemetry.retries, sizeof(_telemetry.retries));
+        success = success && file.read((uint8_t *) &_telemetry.reserved0, sizeof(_telemetry.reserved0));
+        success = success && file.read((uint8_t *) &_telemetry.reserved1, sizeof(_telemetry.reserved1));
+        success = success && file.read((uint8_t *) &_telemetry.reserved2, sizeof(_telemetry.reserved2));
+
+        if (!success) {
+          Serial.println("ERROR: failed to load telemetry rules");
+          return;
+        }
+
+        if (_telemetry.version != TELEMETRY_VERSION) {
+          // run migrations. none yet.
+        }
+
+        while (_telemetry.rules.size() < TELEMETRY_MAX_RULES) {
+          TelemetryRule* rule = new TelemetryRule();
+
+          success = (file.read(rule->pubkey, PUB_KEY_SIZE) == PUB_KEY_SIZE);
+          success = success && (file.read((uint8_t *) &rule->key_len, 1) == 1);
+          success = (file.read(rule->path, MAX_PATH_SIZE) == MAX_PATH_SIZE);
+          success = success && (file.read((uint8_t *) &rule->path_len, 1) == 1);
+          success = success && (file.read((uint8_t *) &rule->password, 16) == 16);
+          success = success && (file.read((uint8_t *) &rule->start, 4) == 4);
+          success = success && (file.read((uint8_t *) &rule->interval, 4) == 4);
+          success = success && (file.read((uint8_t *) &rule->next, 4) == 4);
+
+          if (rule->interval < TELEMETRY_MIN_INTERVAL) {
+            rule->interval = TELEMETRY_MIN_INTERVAL;
+          }
+
+          if (!success) {
+            delete rule;
+            break;
+          }
+
+          rule->next = 0;
+          _telemetry.rules.push_back(rule);
+        }
+        file.close();
+      }
+    }
+  }
+
+  bool _checkedWrite(File &file, uint8_t* data, int size) {
+    return file.write(data, size) == size;
+  }
+
+  void saveTelemetryRules() {
+    File file = _fs->open("/telemetry", "w", true);
+    if (file) {
+      bool success = _checkedWrite(file, (uint8_t *) &_telemetry.version, sizeof(_telemetry.version));
+      success = success && _checkedWrite(file, (uint8_t *) &_telemetry.retries, sizeof(_telemetry.retries));
+      success = success && _checkedWrite(file, (uint8_t *) &_telemetry.reserved0, sizeof(_telemetry.reserved0));
+      success = success && _checkedWrite(file, (uint8_t *) &_telemetry.reserved1, sizeof(_telemetry.reserved1));
+      success = success && _checkedWrite(file, (uint8_t *) &_telemetry.reserved2, sizeof(_telemetry.reserved2));
+
+      if (!success) {
+        Serial.println("ERROR: Failed to save telemetry rules");
+        return;
+      }
+
+      for (int i=0; i<_telemetry.rules.size() && i < TELEMETRY_MAX_RULES; i++) {
+        TelemetryRule* rule = _telemetry.rules[i];
+
+        success = _checkedWrite(file, rule->pubkey, PUB_KEY_SIZE);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->key_len, 1);
+        success = success && _checkedWrite(file, rule->path, MAX_PATH_SIZE);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->path_len, 1);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->password, 16);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->start, 4);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->interval, 4);
+        success = success && _checkedWrite(file, (uint8_t *) &rule->next, 4);
+
+        if (!success) {
+          Serial.printf("ERROR: Failed to save telemetry rule %d\n", i);
+          break;  // write failed
+        }
+      }
+      file.close();
     }
   }
 
@@ -365,7 +521,7 @@ protected:
     else if(type == PAYLOAD_TYPE_PATH) return "PATH";
     else if(type == PAYLOAD_TYPE_TRACE) return "TRACE";
     return "Unknown";
-  } 
+  }
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override {
     // send raw
@@ -490,7 +646,12 @@ protected:
   }
 
   void onContactPathUpdated(const ContactInfo& contact) override {
-    Serial.printf("PATH to: %s, path_len=%d\n", contact.name, (int32_t) contact.out_path_len);
+    Serial.printf("PATH to: %s, path_len=%d, path=", contact.name, (int32_t) contact.out_path_len);
+    for (int i=0;i<contact.out_path_len;i++) {
+      if (i != 0) Serial.print(",");
+      Serial.printf("%02X", contact.out_path[i]);
+    }
+    Serial.println();
     saveContacts();
   }
 
@@ -562,7 +723,7 @@ protected:
     // m->msg += text;
     // pendingMsgs.push_back(m);
   }
-  
+
   void onSignedMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const uint8_t *sender_prefix, const char *text) override {
   }
 
@@ -601,21 +762,184 @@ protected:
 
     Serial.printf("   %s\n", text);
   }
-  
+
   uint8_t onContactRequest(const ContactInfo& contact, uint32_t sender_timestamp, const uint8_t* data, uint8_t len, uint8_t* reply) override {
     return 0;  // unknown
   }
 
   void onContactResponse(const ContactInfo& contact, const uint8_t* data, uint8_t len) override {
-    // not supported
+    uint32_t tag;
+    memcpy(&tag, data, 4);
+
+    Serial.printf("onContactResponse: %08X - %02X\n", tag, data[4]);
+    if (pending_login && memcmp(&pending_login, contact.id.pub_key, 4) == 0) {
+      // response to pending sendLogin()
+      pending_login = 0;
+      if (data[4] == RESP_SERVER_LOGIN_OK) {
+        pending_telemetry_retries = 0;
+        pending_telemetry_next = millis() + 500;
+        pending_telemetry = 1;
+        telemetry_eta = millis() - telemetry_eta;
+        Serial.printf("Login OK, took %u ms\n", telemetry_eta);
+      }
+    } else if (len > 4 && tag == pending_telemetry) {  // check for matching response tag
+      curr_telemetry = nullptr;
+      pending_telemetry = 0;
+      pending_telemetry_retries = 0;
+      CayenneLPP telemetry(len - 4);
+
+      char pubkey[(PUB_KEY_SIZE * 2) + 1];
+      char sender[(PUB_KEY_SIZE * 2) + 1];
+
+      mesh::Utils::toHex(pubkey, contact.id.pub_key, PUB_KEY_SIZE);
+      mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
+
+      JsonDocument doc;
+      doc["version"] = 1;
+      doc["type"] = "TEL";
+      doc["reporter"] = sender;
+      doc["telemetry"] = JsonArray();
+      doc["contact"]["pubkey"] = pubkey;
+      doc["time"]["local"] = getRTCClock()->getCurrentTime();
+      doc["time"]["sender"] = getRTCClock()->getCurrentTime();
+
+      JsonArray telemetryRoot = doc["telemetry"].to<JsonArray>();
+
+      //decode(uint8_t *buffer, uint8_t size, JsonArray &root);
+      Serial.println("decode telemetry");
+      telemetry.decode((uint8_t*) &data[4], len - 4, telemetryRoot);
+      messageQueue.push(doc);
+
+
+      String output;
+      serializeJson(doc, output);
+      Serial.println(output);
+    }
+  }
+
+  void telemetryRun(int id, bool login=true) {
+    if (curr_telemetry) {
+      Serial.println("  ERROR: Already running");
+      return;
+    }
+
+    if (id >= _telemetry.rules.size()) {
+      Serial.println("  ERROR: Bad ID");
+      return;
+    }
+
+    curr_telemetry_rule = _telemetry.rules[id];
+    curr_telemetry = lookupContactByPubKey(curr_telemetry_rule->pubkey, curr_telemetry_rule->key_len);
+
+    if (!curr_telemetry) {
+      Serial.println("  ERROR: Contact not found");
+      return;
+    }
+
+    int pwlen = strlen(curr_telemetry_rule->password);
+    if (!login || pwlen < 1) { // no passsword allows to skip login packet
+      pending_login = 0;
+      pending_telemetry_retries = 0;
+      pending_telemetry_next = millis() + 500;
+      pending_telemetry = 1;
+    } else {
+      memcpy(&pending_login, curr_telemetry->id.pub_key, 4);
+    }
+  }
+
+  void cancelTelemetry() {
+    curr_telemetry = nullptr;
+    curr_telemetry_rule = nullptr;
+    pending_login = 0;
+    pending_telemetry = 0;
+    pending_telemetry_retries = 0;
+  }
+
+  void telemetryLoop() {
+    if (curr_telemetry && pending_telemetry_retries >= _telemetry.retries) {
+      if (pending_telemetry_next < millis()) {
+        Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
+        cancelTelemetry();
+      }
+      return;
+    } else if (curr_telemetry) {
+      if (pending_telemetry_next > millis()) return;
+
+      pending_telemetry_next = millis() + TELEMETRY_RETRY_INTERVAL;
+      pending_telemetry_retries++;
+
+      // Always reset to force set path
+      curr_telemetry->out_path_len = curr_telemetry_rule->path_len;
+      memcpy(curr_telemetry->out_path, curr_telemetry_rule->path, sizeof(curr_telemetry->out_path));
+
+      if (pending_login) {
+        if (!curr_telemetry_rule) {
+          cancelTelemetry();
+          return;
+        }
+        telemetry_eta = millis();
+        uint32_t est_timeout;
+        int result = sendLogin(*curr_telemetry, curr_telemetry_rule->password, est_timeout);
+        Serial.printf("Telemetry login %s, result=%u | %u/%u\n",
+          curr_telemetry->name,
+          result,
+          pending_telemetry_retries,
+          _telemetry.retries
+        );
+        if (result == MSG_SEND_FAILED) {
+          cancelTelemetry();
+          return;
+        }
+      } else if (pending_telemetry) {
+        uint32_t tag, est_timeout;
+        int result = sendRequest(*curr_telemetry, REQ_TYPE_GET_TELEMETRY_DATA, tag, est_timeout);
+        Serial.printf("Telemetry read %s, tag=%08X, result=%u | %u/%u\n",
+          curr_telemetry->name,
+          tag,
+          result,
+          pending_telemetry_retries,
+          _telemetry.retries
+        );
+        if (result == MSG_SEND_FAILED) {
+          cancelTelemetry();
+          return;
+        }
+        pending_telemetry = tag;
+      }
+    } else if (!curr_telemetry) {
+      if (!ntpSynced) return; // require ntp sync!
+
+      // check schedule
+      uint32_t now = getRTCClock()->getCurrentTime();
+      DateTime dt = DateTime(now);
+      uint32_t secondOfDay = dt.second();
+      secondOfDay += dt.minute() * 60;
+      secondOfDay += dt.hour() * 60 * 60;
+
+      int pos = 0;
+      for (TelemetryRule* rule : _telemetry.rules) {
+        if (rule->next == 0) {
+          rule->next = now - secondOfDay + rule->start;
+          while (rule->next < now) { // dont run on setup
+            rule->next += rule->interval;
+          }
+        } else if (rule->next < now) {
+          rule->next = now + rule->interval;
+          Serial.printf("Schedule %u\n", pos);
+          telemetryRun(pos);
+          break;
+        }
+        pos++;
+      }
+    }
   }
 
   uint32_t calcFloodTimeoutMillisFor(uint32_t pkt_airtime_millis) const override {
     return SEND_TIMEOUT_BASE_MILLIS + (FLOOD_SEND_TIMEOUT_FACTOR * pkt_airtime_millis);
   }
-  
+
   uint32_t calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8_t path_len) const override {
-    return SEND_TIMEOUT_BASE_MILLIS + 
+    return SEND_TIMEOUT_BASE_MILLIS +
          ( (pkt_airtime_millis*DIRECT_SEND_PERHOP_FACTOR + DIRECT_SEND_PERHOP_EXTRA_MILLIS) * (path_len + 1));
   }
 
@@ -631,10 +955,14 @@ public:
     memset(&_prefs, 0, sizeof(_prefs));
     memset(&_wifi, 0, sizeof(_wifi));
     memset(&_logp, 0, sizeof(_logp));
+    memset(&_telemetry, 0, sizeof(_telemetry));
     _prefs.airtime_factor = 2.0;    // one third
     strcpy(_prefs.node_name, "NONAME");
     _prefs.freq = LORA_FREQ;
     _prefs.tx_power_dbm = LORA_TX_POWER;
+
+    _telemetry.version = TELEMETRY_VERSION;
+    _telemetry.retries = TELEMETRY_DEFAULT_RETRIES;
 
     command[0] = 0;
     curr_recipient = NULL;
@@ -697,7 +1025,7 @@ public:
           // v0
           WiFiPrefs tmp;
           memcpy(&tmp, dst, sizeof(_wifi)); // unaligned
-          memcpy(dst+ 1, &tmp, sizeof(_wifi) - 1); // 
+          memcpy(dst+ 1, &tmp, sizeof(_wifi) - 1);
           _wifi.version = 1;
           _wifi.txpower = WIFI_POWER_8_5dBm;
           saveWiFiPrefs();
@@ -722,6 +1050,7 @@ public:
 
     loadContacts();
     loadChannels();
+    loadTelemetryRules();
     _public = addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
 
     toggleWiFi(true);
@@ -1039,7 +1368,7 @@ public:
         Serial.printf("  Pub Key:     %s\n", sender);
         Serial.printf("  Raw:         %u\n", _logp.doraw);
       }
-    } else if (memcmp(command, "debug ", 6) == 0) { 
+    } else if (memcmp(command, "debug ", 6) == 0) {
       if (command[6] == 'y') {
         m_debugPrint = true;
       } else {
@@ -1050,7 +1379,7 @@ public:
       IdentityStore store(*_fs, "/identity");
       Serial.println("generating key...");
       ((StdRNG *)getRNG())->begin(millis());
-    
+
       self_id = mesh::LocalIdentity(getRNG());  // create new random identity
       int count = 0;
       while (count < 10 && (self_id.pub_key[0] == 0x00 || self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
@@ -1071,6 +1400,187 @@ public:
       Serial.print("  Go to http://");
       Serial.print(WiFi.localIP());
       Serial.println("/update");
+    } else if (memcmp(command, "tel ", 4) == 0) {
+      const char* action = &command[4];
+      if (memcmp(action, "ls", 2) == 0) {
+        uint32_t now = getRTCClock()->getCurrentTime();
+        Serial.println("ID | Name      | Pub Key        | Path           | Start | Interval | Next    | Password");
+        for (int i=0; i<_telemetry.rules.size(); i++) {
+          TelemetryRule* rule = _telemetry.rules[i];
+
+          // id
+          Serial.printf("%2d | ", i);
+
+          // name
+          ContactInfo* c = lookupContactByPubKey(rule->pubkey, rule->key_len);
+          if (c) {
+            Serial.printf("%-9.9s | ", c->name);
+          } else {
+            Serial.print("_unknown_ | ");
+          }
+
+          // key
+          for (int j=0;j<4;j++) {
+            if (j < rule->key_len) {
+              Serial.printf("%02X:", rule->pubkey[j]);
+            } else {
+              Serial.print("--:");
+            }
+          }
+          Serial.print(".. | ");
+
+          // path
+          if (rule->path_len == -1) {
+            Serial.print("Flood         |");
+          } else {
+            for (int j = 0; j < 4; j++) {
+              if (j > 0) Serial.print(j < rule->path_len ? ',' : ' ');
+
+              if (j < rule->path_len)
+                Serial.printf("%02X", rule->path[j]);
+              else
+                Serial.print("  ");
+            }
+
+            if (rule->path_len == 5) {
+              Serial.printf(",%02X", rule->path[4]);
+            } else if (rule->path_len > 5) {
+              Serial.print(".. | ");
+            } else {
+              Serial.print("   | ");
+            }
+          }
+
+          // timing
+          uint32_t eta =  rule->next - now;
+          Serial.printf("%5d | %8d | %8d | %s\n",
+            rule->start,
+            rule->interval,
+            eta,
+            rule->password
+          );
+        }
+      } else if (memcmp(action, "run ", 4) == 0) {
+        const char* idstr = &action[4];
+        int id = atoi(idstr);
+        telemetryRun(id);
+      } else if (memcmp(action, "runp ", 5) == 0) {
+        const char* idstr = &action[5];
+        int id = atoi(idstr);
+        telemetryRun(id, false);
+      } else if (memcmp(action, "rm ", 3) == 0) {
+        const char* idstr = &action[3];
+        int id = atoi(idstr);
+        if (id >= _telemetry.rules.size()) {
+          Serial.println("  ERROR: Bad ID");
+        } else {
+          _telemetry.rules.erase(_telemetry.rules.begin() + id);
+        }
+      } else if (memcmp(action, "set ", 4) == 0) {
+        const char* cdata = &action[4];
+
+        std::vector<String> parts = split(cdata);
+        // 0 = param
+        // 1 = id
+        // 2 = value
+
+        if (parts.size() < 2) { // value can be optional
+          Serial.println("  ERROR: Not enough params");
+        } else {
+          int id = parts.at(1).toInt();
+          if (id < 0 || id > (_telemetry.rules.size() - 1)) {
+              Serial.printf("  ERROR: bad id (%d). Expected [0 .. %d]\n",
+                id,
+                _telemetry.rules.size()
+              );
+          } else {
+            TelemetryRule* rule = _telemetry.rules[id];
+            if (parts[0] == "password") {
+              memset(rule->password, 0, sizeof(rule->password));
+              if (parts.size() > 2) {
+                strncpy(rule->password, parts.at(2).c_str(), sizeof(rule->password));
+              }
+            } else if (parts[0] == "start") {
+              if (parts.size() > 2) {
+                rule->start = parts.at(2).toInt();
+                rule->next = 0;
+              } else {
+                Serial.println("  ERROR: Missing value");
+              }
+            } else if (parts[0] == "interval") {
+              if (parts.size() > 2) {
+                rule->interval = parts.at(2).toInt();
+                if (rule->interval < TELEMETRY_MIN_INTERVAL) {
+                  rule->interval = TELEMETRY_MIN_INTERVAL;
+                }
+                rule->next = 0;
+              } else {
+                Serial.println("  ERROR: Missing value");
+              }
+            } else if (parts[0] == "path") {
+              // TODO: how to mark flood/dir? Path len could be -1 for flood
+              memset(rule->path, 0, MAX_PATH_SIZE);
+              rule->path_len = 0;
+
+              if (parts.size() > 2) {
+                String value = parts.at(2);
+                if (value == "flood") {
+                  rule->path_len = -1;
+                } else {
+                  char buf[value.length() + 1];
+                  value.toCharArray(buf, sizeof(buf));
+
+                  char *pch = strtok(buf," ,.-:");
+                  while (pch != NULL) {
+                    rule->path[rule->path_len++] = strtol(pch, NULL, 16);
+                    pch = strtok (NULL, " ,.-:");
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (memcmp(action, "add ", 4) == 0) {
+        if (_telemetry.rules.size() < TELEMETRY_MAX_RULES) {
+          const char* pubkey = &action[4];
+          int len = strlen(pubkey);
+          len >>= 1;
+
+          if (len >= 2) {
+            uint8_t raw[PUB_KEY_SIZE];
+            if (mesh::Utils::fromHex(raw, len, pubkey)) {
+              int offset = (_telemetry.rules.size() * 180) + random(0, 60); // 3 minutes + up to 1 minute
+              TelemetryRule* rule = new TelemetryRule();
+              memcpy(rule->pubkey, raw, len);
+              rule->key_len = len;
+              rule->path_len = -1;
+              rule->password[0] = 0; // no password
+              rule->start = 7200 + offset; // 02:00
+              rule->interval = 86400; // 1 day
+              rule->next = 0;
+              _telemetry.rules.push_back(rule);
+            } else {
+              Serial.println("  ERROR: Bad pubkey");
+            }
+          } else {
+            Serial.println("  ERROR: Enter at least 2 bytes");
+          }
+        } else {
+            Serial.println("  ERROR: Max count readched");
+        }
+      } else if (memcmp(action, "rld", 3) == 0) {
+        Serial.println("  Reload telemetry");
+        loadTelemetryRules();
+      } else if (memcmp(action, "save", 4) == 0) {
+        Serial.println("  Save telemetry");
+        saveTelemetryRules();
+      } else {
+        Serial.println("  Unknown anction. Valid options are:");
+        Serial.println("     ls");
+        Serial.println("     add {pubkey}  # can be first few bytes");
+        Serial.println("     set start|interval|password {id} {value}  # find id by `ls`");
+        Serial.println("     rm {id}");
+      }
     } else if (memcmp(command, "help", 4) == 0) {
       Serial.println("Commands:");
       Serial.println("   set {name|lat|lon|freq|tx|af} {value}");
@@ -1097,6 +1607,7 @@ public:
 
   void loop() {
     BaseChatMesh::loop();
+    telemetryLoop();
 
     int len = strlen(command);
     while (Serial.available() && len < sizeof(command)-1) {
@@ -1168,7 +1679,7 @@ void WiFiTaskCode(void * pvParameters) {
       if (the_mesh.getLogPrefs()->selfreport > 0 && millis() > nextReport) {
         char sender[(PUB_KEY_SIZE * 2) + 1];
         mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
-  
+
         JsonDocument doc;
         doc["version"] = 1;
         doc["type"] = "SYS";
@@ -1224,16 +1735,16 @@ void WiFiTaskCode(void * pvParameters) {
               Serial.println("[HTTP] Post data");
             }
             int httpResponseCode = https.POST(ptr);
-        
+
             if (httpResponseCode > 0) {
               String response = https.getString();
-              Serial.printf("[HTTP] POST: %d\n", httpResponseCode);
+              Serial.printf("[HTTP] POST: %d | %s\n", httpResponseCode, response.c_str());
               sent = true;
             } else {
               Serial.printf("[HTTP] ERROR: %d\n", httpResponseCode);
               ++sendFailures;
             }
-        
+
             https.end();
           } else {
             ++sendFailures;
@@ -1275,7 +1786,7 @@ void WiFiTaskCode(void * pvParameters) {
         messageQueue.push(doc);
         sendsys = true;
       }
-  
+
       WiFi.disconnect();
       WiFi.reconnect();
       lastConencted = millis();
