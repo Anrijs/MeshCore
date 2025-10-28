@@ -158,6 +158,7 @@ struct TelemetryRule {
   uint32_t start; // second of day
   uint32_t interval; // interval in seconds
   uint32_t next = 0; // next run
+  bool loggedin = false;
 };
 
 struct TelemetryRules {
@@ -781,6 +782,7 @@ protected:
         pending_telemetry = 1;
         telemetry_eta = millis() - telemetry_eta;
         Serial.printf("Login OK, took %u ms\n", telemetry_eta);
+        if (curr_telemetry_rule) curr_telemetry_rule->loggedin = true;
       }
     } else if (len > 4 && tag == pending_telemetry) {  // check for matching response tag
       curr_telemetry = nullptr;
@@ -837,7 +839,7 @@ protected:
     }
 
     int pwlen = strlen(curr_telemetry_rule->password);
-    if (!login || pwlen < 1) { // no passsword allows to skip login packet
+    if (!login || pwlen < 1 || curr_telemetry_rule->loggedin) { // no passsword allows to skip login packet
       pending_login = 0;
       pending_telemetry_retries = 0;
       pending_telemetry_next = millis() + 500;
@@ -858,6 +860,7 @@ protected:
   void telemetryLoop() {
     if (curr_telemetry && pending_telemetry_retries >= _telemetry.retries) {
       if (pending_telemetry_next < millis()) {
+        if (pending_login) curr_telemetry_rule->loggedin = false; // unset logged in flag.
         Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
         cancelTelemetry();
       }
@@ -880,27 +883,34 @@ protected:
         telemetry_eta = millis();
         uint32_t est_timeout;
         int result = sendLogin(*curr_telemetry, curr_telemetry_rule->password, est_timeout);
-        Serial.printf("Telemetry login %s, result=%u | %u/%u\n",
+        Serial.printf("Telemetry login %s, result=%u, to=%u | %u/%u\n",
           curr_telemetry->name,
           result,
+          est_timeout,
           pending_telemetry_retries,
           _telemetry.retries
         );
-        if (result == MSG_SEND_FAILED) {
+        if (result == MSG_SEND_SENT_DIRECT) {
+          pending_telemetry_next = millis() + est_timeout + 500;
+        }else if (result == MSG_SEND_FAILED) {
           cancelTelemetry();
           return;
         }
       } else if (pending_telemetry) {
+        delay(1000);
         uint32_t tag, est_timeout;
         int result = sendRequest(*curr_telemetry, REQ_TYPE_GET_TELEMETRY_DATA, tag, est_timeout);
-        Serial.printf("Telemetry read %s, tag=%08X, result=%u | %u/%u\n",
+        Serial.printf("Telemetry read %s, tag=%08X, result=%um to=%u | %u/%u\n",
           curr_telemetry->name,
           tag,
           result,
+          est_timeout,
           pending_telemetry_retries,
           _telemetry.retries
         );
-        if (result == MSG_SEND_FAILED) {
+        if (result == MSG_SEND_SENT_DIRECT) {
+          pending_telemetry_next = millis() + est_timeout + 500;
+        } else if (result == MSG_SEND_FAILED) {
           cancelTelemetry();
           return;
         }
@@ -1404,7 +1414,7 @@ public:
       const char* action = &command[4];
       if (memcmp(action, "ls", 2) == 0) {
         uint32_t now = getRTCClock()->getCurrentTime();
-        Serial.println("ID | Name      | Pub Key        | Path           | Start | Interval | Next    | Password");
+        Serial.println("ID | Name      | Pub Key        | Path          | Start | Interval | Next     | L | Password");
         for (int i=0; i<_telemetry.rules.size(); i++) {
           TelemetryRule* rule = _telemetry.rules[i];
 
@@ -1414,7 +1424,18 @@ public:
           // name
           ContactInfo* c = lookupContactByPubKey(rule->pubkey, rule->key_len);
           if (c) {
-            Serial.printf("%-9.9s | ", c->name);
+            char uname[32];
+            int k = 0;
+            for (int j=0;j<32;j++) {
+              uname[k] = 0;
+              char b = c->name[j];
+              if (b == 0) {
+                break;
+              } else if (b >= 32 && b <= 127) {
+                uname[k++] = b;
+              }
+            }
+            Serial.printf("%-9.9s | ", uname);
           } else {
             Serial.print("_unknown_ | ");
           }
@@ -1431,7 +1452,7 @@ public:
 
           // path
           if (rule->path_len == -1) {
-            Serial.print("Flood         |");
+            Serial.print("Flood         | ");
           } else {
             for (int j = 0; j < 4; j++) {
               if (j > 0) Serial.print(j < rule->path_len ? ',' : ' ');
@@ -1453,10 +1474,11 @@ public:
 
           // timing
           uint32_t eta =  rule->next - now;
-          Serial.printf("%5d | %8d | %8d | %s\n",
+          Serial.printf("%-5d | %-8d | %-8d | %c | %s\n",
             rule->start,
             rule->interval,
             eta,
+            rule->loggedin ? 'Y' : 'n',
             rule->password
           );
         }
@@ -1464,6 +1486,8 @@ public:
         const char* idstr = &action[4];
         int id = atoi(idstr);
         telemetryRun(id);
+      } else if (memcmp(action, "cancel", 6) == 0) {
+        cancelTelemetry();
       } else if (memcmp(action, "runp ", 5) == 0) {
         const char* idstr = &action[5];
         int id = atoi(idstr);
