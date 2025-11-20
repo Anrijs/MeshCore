@@ -1833,7 +1833,7 @@ void WiFiTaskCode(void * pvParameters) {
       lastConencted = millis();
     }
 
-    task_sleep(1000);
+    task_sleep(10);
   }
 }
 
