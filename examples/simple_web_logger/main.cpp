@@ -238,6 +238,9 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   // debug toggle flag
   bool m_debugPrint = false;
 
+  // pkt decoded?
+  bool rawDecoded = false;
+
   const char* getTypeName(uint8_t type) const {
     if (type == ADV_TYPE_CHAT) return "Chat";
     if (type == ADV_TYPE_REPEATER) return "Repeater";
@@ -526,7 +529,11 @@ protected:
   }
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override {
-    // send raw
+    // process packet
+    rawDecoded = false;
+    mesh::DispatcherAction act = Mesh::onRecvPacket(pkt);
+
+    // log raw
     if (_logp.doraw) {
       int phType = (pkt->header >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
 
@@ -560,19 +567,16 @@ protected:
       doc["version"] = 1;
       doc["type"] = "RAW";
       doc["reporter"] = sender;
-      doc["recvtime"] = getRTCClock()->getCurrentTime();
-      doc["hash"] = strhash;
-      doc["packet"]["header"]["raw"] = pkt->header;
-      doc["packet"]["header"]["route-type"] = pkt->header & PH_ROUTE_MASK;
-      doc["packet"]["header"]["payload-type"] = (pkt->header >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
-      doc["packet"]["header"]["payload-version"] = (pkt->header >> PH_VER_SHIFT) & PH_VER_MASK;
+      doc["time"]["local"] = getRTCClock()->getCurrentTime();
+      doc["packet"]["header"] = pkt->header;
       doc["packet"]["path"] = path;
       doc["packet"]["payload"] = payload;
-      doc["packet"]["snr"] = pkt->_snr;
+      doc["packet"]["snr"] = pkt->getSNR();
+      doc["packet"]["decoded"] = rawDecoded ? 1 : 0;
       messageQueue.push(doc);
     }
 
-    return Mesh::onRecvPacket(pkt);
+    return act;
   }
 
   void onAdvertRecv(mesh::Packet* pkt, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) {
@@ -621,6 +625,7 @@ protected:
     doc["contact"]["lon"] = parser.getIntLon();
     doc["message"]["path"] = getPath(pkt);
     messageQueue.push(doc);
+    rawDecoded = true;
 
     // Serial prints
     if (debugPrint()) {
@@ -701,6 +706,7 @@ protected:
     doc["message"]["header"] = pkt->header;
     doc["message"]["path"] = getPath(pkt);
     messageQueue.push(doc);
+    rawDecoded = true;
 
     // Serial prints
     Serial.printf("MESSAGE from -> %s\n", from.name);
@@ -753,8 +759,8 @@ protected:
     doc["message"]["header"] = pkt->header;
     doc["message"]["path"] = getPath(pkt);
     doc["channel"]["hash"] = chhash;
-
     messageQueue.push(doc);
+    rawDecoded = true;
 
     if (pkt->isRouteDirect()) {
       Serial.printf("PUBLIC CHANNEL MSG -> (Direct!)\n");
@@ -784,6 +790,7 @@ protected:
         telemetry_eta = millis() - telemetry_eta;
         Serial.printf("Login OK, took %u ms\n", telemetry_eta);
         if (curr_telemetry_rule) curr_telemetry_rule->loggedin = true;
+        rawDecoded = true;
       }
     } else if (len > 4 && tag == pending_telemetry || tag == prev_pending_telemetry) {  // check for matching response tag
       curr_telemetry = nullptr;
@@ -812,7 +819,7 @@ protected:
       Serial.println("decode telemetry");
       telemetry.decode((uint8_t*) &data[4], len - 4, telemetryRoot);
       messageQueue.push(doc);
-
+      rawDecoded = true;
 
       String output;
       serializeJson(doc, output);
