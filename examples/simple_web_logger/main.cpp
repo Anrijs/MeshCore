@@ -226,6 +226,7 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   TelemetryRule* curr_telemetry_rule;
   uint32_t pending_login;
   uint32_t pending_telemetry;
+  uint32_t prev_pending_telemetry;
   int pending_telemetry_retries = 0;
   long pending_telemetry_next = 0;
   long telemetry_eta = 0;
@@ -784,7 +785,7 @@ protected:
         Serial.printf("Login OK, took %u ms\n", telemetry_eta);
         if (curr_telemetry_rule) curr_telemetry_rule->loggedin = true;
       }
-    } else if (len > 4 && tag == pending_telemetry) {  // check for matching response tag
+    } else if (len > 4 && tag == pending_telemetry || tag == prev_pending_telemetry) {  // check for matching response tag
       curr_telemetry = nullptr;
       pending_telemetry = 0;
       pending_telemetry_retries = 0;
@@ -860,7 +861,7 @@ protected:
   void telemetryLoop() {
     if (curr_telemetry && pending_telemetry_retries >= _telemetry.retries) {
       if (pending_telemetry_next < millis()) {
-        if (pending_login) curr_telemetry_rule->loggedin = false; // unset logged in flag.
+        curr_telemetry_rule->loggedin = false; // unset logged in flag.
         Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
         cancelTelemetry();
       }
@@ -914,6 +915,7 @@ protected:
           cancelTelemetry();
           return;
         }
+        prev_pending_telemetry = pending_telemetry;
         pending_telemetry = tag;
       }
     } else if (!curr_telemetry) {
@@ -1492,6 +1494,14 @@ public:
         const char* idstr = &action[5];
         int id = atoi(idstr);
         telemetryRun(id, false);
+      } else if (memcmp(action, "logout ", 7) == 0) {
+        const char* idstr = &action[7];
+        int id = atoi(idstr);
+        if (id >= _telemetry.rules.size()) {
+          Serial.println("  ERROR: Bad ID");
+        } else {
+          _telemetry.rules[id]->loggedin = false;
+        }
       } else if (memcmp(action, "rm ", 3) == 0) {
         const char* idstr = &action[3];
         int id = atoi(idstr);
