@@ -1622,6 +1622,75 @@ public:
         Serial.println("     set start|interval|password {id} {value}  # find id by `ls`");
         Serial.println("     rm {id}");
       }
+    } else if (memcmp(command, "contacts ", 9) == 0) {
+      const char* action = &command[9];
+      if (memcmp(action, "ls", 2) == 0) {
+        ContactsIterator iter;
+        ContactInfo c;
+        int i = 0;
+
+        uint32_t curr = getRTCClock()->getCurrentTime();
+
+        Serial.println("ID | Name      | Pub Key        | Type | Last mod");
+        while (iter.hasNext(this, c)) {
+          Serial.printf("%2d | ", i);
+          i++;
+
+          Serial.printf("%-20.20s | ", c.name);
+
+          for (int j=0;j<4;j++) {
+            Serial.printf("%02X:", c.id.pub_key[j]);
+          }
+
+          Serial.print(".. | ");
+
+          if (c.type == ADV_TYPE_NONE) {
+            Serial.print("None");
+          } else if (c.type == ADV_TYPE_CHAT) {
+            Serial.print("Chat");
+          } else if (c.type == ADV_TYPE_REPEATER) {
+            Serial.print("Rept");
+          } else if (c.type == ADV_TYPE_ROOM) {
+            Serial.print("Room");
+          } else if (c.type == ADV_TYPE_SENSOR) {
+            Serial.print("Sens");
+          } else {
+            Serial.print("unkn");
+          }
+
+          Serial.print(" | ");
+
+          char tmp[40];
+          int32_t secs = c.lastmod;;
+          AdvertTimeHelper::formatRelativeTimeDiff(tmp, secs, false);
+          Serial.println(secs);
+
+        }
+      } else if (memcmp(action, "rm", 2) == 0) {
+        const char* idstr = &action[3];
+        int id = atoi(idstr);
+
+        ContactsIterator iter;
+        ContactInfo c;
+        int i = 0;
+
+        while (iter.hasNext(this, c)) {
+          if (i++ == id) {
+            Serial.println("Removed contact ");
+            Serial.print(c.name);
+            Serial.print(" (");
+            for (int j=0;j<4;j++) {
+              Serial.printf("%02X:", c.id.pub_key[j]);
+            }
+            Serial.println("..)");
+            removeContact(c);
+            break;
+          }
+        }
+       } else if (memcmp(action, "save", 4) == 0) {
+        saveContacts();
+        Serial.println("Contacts saved");
+      }
     } else if (memcmp(command, "help", 4) == 0) {
       Serial.println("Commands:");
       Serial.println("   set {name|lat|lon|freq|tx|af} {value}");
@@ -1637,10 +1706,26 @@ public:
       Serial.println("   flood");
       Serial.println("   reset path");
       Serial.println("   public <text>");
+      Serial.println();
+      Serial.println(" - Logger:");
       Serial.println("   wifi {ssid|password} {value}");
       Serial.println("   log {url|auth|report|raw} {value}");
       Serial.println("   channel {add|ls} {value}");
       Serial.println("   start ota");
+      Serial.println();
+      Serial.println(" - Telemetry:");
+      Serial.println("   tel ls");
+      Serial.println("   tel add {pubkey}");
+      Serial.println("   tel rm {id}");
+      Serial.println("   tel set {path|start|interval|password} {id} {value}");
+      Serial.println("   tel run {id}");
+      Serial.println("   tel cancel");
+      Serial.println("   tel save");
+      Serial.println();
+      Serial.println(" - Contacts:");
+      Serial.println("   contacts ls");
+      Serial.println("   contacts rm {id}");
+      Serial.println("   contacts save");
     } else {
       Serial.print("   ERROR: unknown command: "); Serial.println(command);
     }
