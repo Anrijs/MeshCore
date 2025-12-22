@@ -1423,7 +1423,7 @@ public:
       const char* action = &command[4];
       if (memcmp(action, "ls", 2) == 0) {
         uint32_t now = getRTCClock()->getCurrentTime();
-        Serial.println("ID | Name      | Pub Key        | Path          | Start | Interval | Next     | L | Password");
+        Serial.println("ID | Name            | Pub Key        | Path          | Start | Interval | Next     | L | Password");
         for (int i=0; i<_telemetry.rules.size(); i++) {
           TelemetryRule* rule = _telemetry.rules[i];
 
@@ -1444,7 +1444,7 @@ public:
                 uname[k++] = b;
               }
             }
-            Serial.printf("%-9.9s | ", uname);
+            Serial.printf("%-20.20s | ", uname);
           } else {
             Serial.print("_unknown_ | ");
           }
