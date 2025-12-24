@@ -26,8 +26,11 @@
 #include <RTClib.h>
 #include <target.h>
 #include <CayenneLPP.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
 #include "LoggerMeshTables.h"
+#include "html.h"
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
@@ -79,6 +82,10 @@ unsigned long ntpNext = 0;
 // RTOS, wifi thread
 TaskHandle_t WiFiTask;
 void WiFiTaskCode(void* pvParameters);
+
+// Web
+static AsyncWebServer server(80);
+static AsyncWebSocket ws("/ws");
 
 void task_sleep(uint32_t ms) {
   vTaskDelay(ms / portTICK_PERIOD_MS);
@@ -184,6 +191,7 @@ struct LogPrefs {
   char url[256];
   uint8_t doraw;
   uint8_t dofwd;
+  uint8_t web;
 };
 
 std::vector<String> split(const char* input) {
@@ -220,6 +228,10 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   uint32_t expected_ack_crc;
   ChannelDetails* _public;
   unsigned long last_msg_sent;
+  std::vector<String> chatHistory;
+  long chatHistoryId = 0;
+  long chatWsHistoryId = 0;
+  int chatWsHistoryPend = 0;
 
   ContactInfo* curr_recipient;
   ContactInfo* curr_telemetry;
@@ -454,6 +466,34 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   }
 
 public:
+  void addHistory(String str) {
+    if (chatHistory.size() > 50) {
+      chatHistory.erase(chatHistory.begin());
+    }
+
+    chatHistory.push_back(str);
+    chatWsHistoryPend++;
+
+    if (chatWsHistoryPend > 50) chatWsHistoryPend = 50;
+  }
+
+  int getHistorySize() {
+    return chatHistory.size();
+  }
+
+  int getHistoryPending() {
+    return chatWsHistoryPend;
+  }
+
+  void resetHistoryPending() {
+    chatWsHistoryPend = 0;
+  }
+  
+  String getHistory(int index) {
+    if (index >= chatHistory.size()) return "";
+    return chatHistory[index];
+  }
+
   void setClock(uint32_t timestamp, bool ntp) {
     uint32_t curr = getRTCClock()->getCurrentTime();
     if (timestamp > curr || ntp) {
@@ -474,6 +514,7 @@ public:
 
   const NodePrefs* getNodePrefs() { return &_prefs; }
   const LogPrefs* getLogPrefs() { return &_logp; }
+  const WiFiPrefs* getWiFiPrefs() { return &_wifi; }
   const bool debugPrint() { return m_debugPrint; }
 
 private:
@@ -769,6 +810,25 @@ protected:
     }
 
     Serial.printf("   %s\n", text);
+
+    if (_tables->hasSeen2(pkt)) return;
+
+    // public only
+    if (channel.hash[0] == 0x11) {
+      JsonDocument doc2;
+      doc2["t"] = timestamp;
+      doc2["m"] = text;
+      doc2["p"] = getPath(pkt);
+      doc2["c"] = chhash;
+      doc2["h"] = strhash;
+      doc2["i"] = chatHistoryId++;
+
+      String msgData;
+      serializeJson(doc2, msgData);
+
+      addHistory(msgData);
+    }
+    }
   }
 
   uint8_t onContactRequest(const ContactInfo& contact, uint32_t sender_timestamp, const uint8_t* data, uint8_t len, uint8_t* reply) override {
@@ -1064,6 +1124,12 @@ public:
           _logp.selfreport = 15 * 60; // 15 min default
           saveLogPrefs();
         }
+
+        if (_logp.version == 1) {
+          _logp.version = 2;
+          _logp.web = false;
+          saveLogPrefs();
+        }
       }
     }
 
@@ -1071,6 +1137,7 @@ public:
     loadChannels();
     loadTelemetryRules();
     _public = addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
+    WiFi.setHostname(getNodePrefs()->node_name);
 
     toggleWiFi(true);
   }
@@ -1146,6 +1213,54 @@ public:
     Serial.println(tmp);
   }
 
+  void sendChannelMsg(const char* sender, const char* message, const mesh::GroupChannel& channel) {
+      uint8_t temp[5+MAX_TEXT_LEN+32];
+      uint32_t timestamp = getRTCClock()->getCurrentTime();
+      memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
+      temp[4] = 0;  // attempt and flags
+
+      if (message) {
+        sprintf((char *) &temp[5], "%s: %s", sender, message);  // <sender>: <msg>
+      } else {
+        sprintf((char *) &temp[5], "%s", sender);
+      }
+      temp[5 + MAX_TEXT_LEN] = 0;  // truncate if too long
+
+      int len = strlen((char *) &temp[5]);
+      auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + len);
+      if (pkt) {
+        sendFlood(pkt);
+
+        _tables->hasSeen2(pkt);
+
+        uint8_t hash[MAX_HASH_SIZE];
+        pkt->calculatePacketHash(hash);
+
+        char chhash[(PUB_KEY_SIZE * 2) + 1];
+        char strhash[MAX_HASH_SIZE * 2 + 1];
+
+        mesh::Utils::toHex(chhash, channel.hash, PATH_HASH_SIZE);
+        mesh::Utils::toHex(strhash, hash, MAX_HASH_SIZE);
+
+        Serial.println("   Sent.");
+
+        if (channel.hash[0] == 0x11) {
+          JsonDocument doc2;
+          doc2["t"] = timestamp;
+          doc2["m"] = (char *) &temp[5];
+          doc2["p"] = "flood";
+          doc2["c"] = chhash;
+          doc2["h"] = strhash;
+          doc2["i"] = chatHistoryId++;
+          String msgData;
+          serializeJson(doc2, msgData);
+          addHistory(msgData);
+        }
+      } else {
+        Serial.println("   ERROR: unable to send");
+      }
+  }
+
   void handleCommand(const char* command) {
     while (*command == ' ') command++;  // skip leading spaces
 
@@ -1164,23 +1279,10 @@ public:
       } else {
         Serial.println("   ERROR: no recipient selected (use 'to' cmd).");
       }
-    } else if (memcmp(command, "public ", 7) == 0) {  // send GroupChannel msg
-      uint8_t temp[5+MAX_TEXT_LEN+32];
-      uint32_t timestamp = getRTCClock()->getCurrentTime();
-      memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
-      temp[4] = 0;  // attempt and flags
-
-      sprintf((char *) &temp[5], "%s: %s", _prefs.node_name, &command[7]);  // <sender>: <msg>
-      temp[5 + MAX_TEXT_LEN] = 0;  // truncate if too long
-
-      int len = strlen((char *) &temp[5]);
-      auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, _public->channel, temp, 5 + len);
-      if (pkt) {
-        sendFlood(pkt);
-        Serial.println("   Sent.");
-      } else {
-        Serial.println("   ERROR: unable to send");
-      }
+    } else if (memcmp(command, "public ", 7) == 0) {
+      sendChannelMsg(_prefs.node_name, &command[7], _public->channel);
+    } else if (memcmp(command, "public_raw ", 11) == 0) {
+      sendChannelMsg(&command[11], 0, _public->channel);
     } else if (memcmp(command, "list", 4) == 0) {  // show Contact list, by most recent
       int n = 0;
       if (command[4] == ' ') {  // optional param, last 'N'
@@ -1379,6 +1481,17 @@ public:
         }
         saveLogPrefs();
         Serial.println("  OK");
+      } else if (memcmp(config, "web ", 4) == 0) {
+        if (config[4] == 'y' || config[4] == '1') {
+          Serial.println("Website enabled");
+          _logp.web = 1;
+        } else {
+          Serial.println("Website disabled");
+          _logp.web = 0;
+        }
+        Serial.println("Reboot to apply");
+        saveLogPrefs();
+        Serial.println("  OK");
       } else {
         char sender[(PUB_KEY_SIZE * 2) + 1];
         mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
@@ -1386,6 +1499,8 @@ public:
         Serial.printf("  Self-report: %u\n", _logp.selfreport);
         Serial.printf("  Pub Key:     %s\n", sender);
         Serial.printf("  Raw:         %u\n", _logp.doraw);
+        Serial.printf("  Fwd:         %u\n", _logp.dofwd);
+        Serial.printf("  Web:         %u\n", _logp.web);
       }
     } else if (memcmp(command, "debug ", 6) == 0) {
       if (command[6] == 'y') {
@@ -1889,6 +2004,17 @@ void WiFiTaskCode(void * pvParameters) {
           }
         }
       }
+
+      if (the_mesh.getHistoryPending() > 0) {
+        int start = the_mesh.getHistorySize() - the_mesh.getHistoryPending();
+
+        for (int i = start; i >= 0 && i < the_mesh.getHistorySize(); i++) {
+          ws.printfAll(the_mesh.getHistory(i).c_str());
+        }
+        the_mesh.resetHistoryPending();
+      }
+
+      ws.cleanupClients(5); 
     } else if (connected && (millis() > (lastConencted + 5000) || sendFailures > 5)) {
       connected = false;
       sendFailures = 0;
@@ -1933,6 +2059,111 @@ void startWifiTask(int core) {
       core);          /* pin task to core */
 }
 
+void setupWebserver() {
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/html", htmlChat);
+  });
+
+  server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/html", htmlSettings);
+  });
+
+  server.on("/chat.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["name"] = the_mesh.getNodePrefs()->node_name;
+    JsonArray arr = doc["msg"].to<JsonArray>();
+
+    int size = the_mesh.getHistorySize();
+    for (int i=0;i<size;i++) {
+      JsonDocument doc2;
+      DeserializationError error = deserializeJson(doc2, the_mesh.getHistory(i));
+      if (error) continue;
+      arr.add(doc2);
+    }
+
+    String postData;
+    serializeJson(doc, postData);
+
+    request->send(200, "application/json", postData);
+  });
+
+  server.on("/settings.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["node_prefs"]["node_name"] = the_mesh.getNodePrefs()->node_name;
+    doc["node_prefs"]["node_lat"] = the_mesh.getNodePrefs()->node_lat;
+    doc["node_prefs"]["node_lon"] = the_mesh.getNodePrefs()->node_lon;
+    doc["node_prefs"]["freq"] = the_mesh.getNodePrefs()->freq;
+    doc["node_prefs"]["tx_power_dbm"] = the_mesh.getNodePrefs()->tx_power_dbm;
+
+    doc["wifi_prefs"]["ssid"] = the_mesh.getWiFiPrefs()->ssid;
+    doc["wifi_prefs"]["password"] = the_mesh.getWiFiPrefs()->password;
+    doc["wifi_prefs"]["txpower"] = the_mesh.getWiFiPrefs()->txpower / 4.0;
+
+    doc["logger_prefs"]["url"] = the_mesh.getLogPrefs()->url;
+    doc["logger_prefs"]["auth"] = the_mesh.getLogPrefs()->auth;
+    doc["logger_prefs"]["selfreport"] = the_mesh.getLogPrefs()->selfreport;
+
+    String postData;
+    serializeJson(doc, postData);
+
+    request->send(200, "application/json", postData);
+  });
+
+  server.on("/exec", HTTP_POST,
+    [](AsyncWebServerRequest *request) { },
+    NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, data);
+
+      if (error) {
+        request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+      }
+
+      JsonArray commands = doc["commands"];
+
+      for (const char* cmd : commands) {
+        Serial.println(cmd);
+        the_mesh.handleCommand(cmd);
+      }
+
+      request->send(200, "application/json", "{}");
+    }
+  );
+
+  ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+      (void)len;
+
+    if (type == WS_EVT_CONNECT) {
+      Serial.println("ws connect");
+      client->setCloseClientOnQueueFull(false);
+      client->ping();
+    } else if (type == WS_EVT_DISCONNECT) {
+      Serial.println("ws disconnect");
+    } else if (type == WS_EVT_ERROR) {
+      Serial.println("ws error");
+    } else if (type == WS_EVT_PONG) {
+      Serial.println("ws pong");
+    } else if (type == WS_EVT_DATA) {
+      Serial.println("ws data");
+    }
+  });
+
+  // shows how to prevent a third WS client to connect
+  server.addHandler(&ws).addMiddleware([](AsyncWebServerRequest *request, ArMiddlewareNext next) {
+    if (ws.count() > 4) {
+      request->send(503, "text/plain", "Server is busy");
+    } else {
+      next();
+    }
+  });
+
+  server.addHandler(&ws);
+
+  server.begin();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -1957,6 +2188,11 @@ void setup() {
 
   int core = xPortGetCoreID() == 1 ? 0 : 1;
   startWifiTask(core);
+
+  if (the_mesh.getLogPrefs()->web) {
+    Serial.println("Start webserver");
+    setupWebserver();
+  }
 }
 
 void loop() {
