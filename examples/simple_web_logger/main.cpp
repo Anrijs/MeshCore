@@ -194,11 +194,19 @@ struct LogPrefs {
   uint8_t web;
 };
 
-std::vector<String> split(const char* input) {
+std::vector<String> split(const char* input, size_t limit) {
   std::vector<String> tokens;
   String current = "";
 
   while (*input != '\0') {
+    if (limit > 0 && tokens.size() == limit - 1) {
+      while (*input != '\0' && isSpace(*input)) {
+        input++;
+      }
+      current += input;
+      break;
+    }
+
     if (isSpace(*input)) {
       if (current.length() > 0) {
         tokens.push_back(current);
@@ -1376,8 +1384,27 @@ public:
           channel_idx++;
         }
         Serial.println();
+      } else if (memcmp(method, "msg ", 4) == 0) {
+        const char* cdata = &method[4];
+        std::vector<String> parts = split(cdata, 2);
+        // 0 = channel_id
+        // 1 = message
+
+        if (parts.size() < 2) { // value can be optional
+          Serial.println("  ERROR: Not enough params");
       } else {
-        Serial.println("  Invalid option");
+          int id = parts.at(0).toInt();
+          ChannelDetails ch;
+          if (getChannel(id, ch)) {
+            Serial.printf("  Send to: [%u]", id);
+            Serial.println(ch.name);
+            Serial.print("msg: ");
+            Serial.println(parts[1]);
+            sendChannelMsg(parts[1].c_str(), 0, ch.channel);
+          } else {
+            Serial.println("  ERROR: Invalid channel");
+          }
+        }
       }
     } else if (memcmp(command, "set ", 4) == 0) {
       const char* config = &command[4];
@@ -1635,7 +1662,7 @@ public:
       } else if (memcmp(action, "set ", 4) == 0) {
         const char* cdata = &action[4];
 
-        std::vector<String> parts = split(cdata);
+        std::vector<String> parts = split(cdata, 0);
         // 0 = param
         // 1 = id
         // 2 = value
