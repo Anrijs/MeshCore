@@ -1565,7 +1565,7 @@ public:
       const char* action = &command[4];
       if (memcmp(action, "ls", 2) == 0) {
         uint32_t now = getRTCClock()->getCurrentTime();
-        Serial.println("ID | Name            | Pub Key        | Path          | Start | Interval | Next     | L | Password");
+        Serial.println("ID | Name                 | Pub Key        | Path          | Start | Interval | Next     | L | Password");
         for (int i=0; i<_telemetry.rules.size(); i++) {
           TelemetryRule* rule = _telemetry.rules[i];
 
@@ -1773,7 +1773,7 @@ public:
 
         uint32_t curr = getRTCClock()->getCurrentTime();
 
-        Serial.println("ID | Name      | Pub Key        | Type | Last mod");
+        Serial.println("ID | Name                s | Pub Key        | Type | Last mod");
         while (iter.hasNext(this, c)) {
           Serial.printf("%2d | ", i);
           i++;
