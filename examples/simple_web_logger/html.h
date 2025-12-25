@@ -168,7 +168,7 @@ function loadSettings(data) {
     nodePrefsInputs.push(createInput(nodeDiv, "Latitude", "number", nodePrefs.node_lat, "set lat {}", {min: -90, max: 90}));
     nodePrefsInputs.push(createInput(nodeDiv, "Longitude", "number", nodePrefs.node_lon, "set lon {}", {min: -180, max: 180}));
     nodePrefsInputs.push(createInput(nodeDiv, "Frequency", "number", nodePrefs.freq, "set freq {}", {min: 0}));
-    nodePrefsInputs.push(createInput(nodeDiv, "Tx Power dBm", "number", nodePrefs.freq, "set tx {}", {min: 0, max: 30}));
+    nodePrefsInputs.push(createInput(nodeDiv, "Tx Power dBm", "number", nodePrefs.tx_power_dbm, "set tx {}", {min: 0, max: 30}));
     createSaveButton(nodeDiv, "Save Node Prefs", nodePrefsInputs);
 
     wifiPrefsInputs.push(createInput(wifiDiv, "SSID", "text", wifiPrefs.ssid, "wifi ssid {}", {maxlength: 32}));
