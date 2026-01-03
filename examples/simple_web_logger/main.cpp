@@ -825,12 +825,13 @@ protected:
     // public only
     if (channel.hash[0] == 0x11) {
       JsonDocument doc2;
-      doc2["t"] = timestamp;
-      doc2["m"] = text;
-      doc2["p"] = getPath(pkt);
-      doc2["c"] = chhash;
-      doc2["h"] = strhash;
-      doc2["id"] = chatHistoryId++;
+      doc2["type"] = "channel_msg";
+      doc2["data"]["t"] = timestamp;
+      doc2["data"]["m"] = text;
+      doc2["data"]["p"] = getPath(pkt);
+      doc2["data"]["c"] = chhash;
+      doc2["data"]["h"] = strhash;
+      doc2["data"]["id"] = chatHistoryId++;
 
       String msgData;
       serializeJson(doc2, msgData);
@@ -861,6 +862,7 @@ protected:
         rawDecoded = true;
       }
     } else if (len > 4 && tag == pending_telemetry || tag == prev_pending_telemetry) {  // check for matching response tag
+      String name = curr_telemetry ? curr_telemetry->name : "?";
       curr_telemetry = nullptr;
       pending_telemetry = 0;
       pending_telemetry_retries = 0;
@@ -892,17 +894,31 @@ protected:
       String output;
       serializeJson(doc, output);
       Serial.println(output);
+
+      String msgData;
+      JsonDocument doc2;
+      doc2["type"] = "telemetry_data";
+      doc2["data"]["m"] = output;
+      doc2["data"]["n"] = name;
+      serializeJson(doc2, msgData);
+      ws.printfAll(msgData.c_str());
     }
   }
 
-  void telemetryRun(int id, bool login=true) {
-    if (curr_telemetry) {
-      Serial.println("  ERROR: Already running");
+  void telemetryRun(int id, bool login=true, bool schedule=false) {
+    if (id >= _telemetry.rules.size()) {
+      Serial.println("  ERROR: Bad ID");
       return;
     }
 
-    if (id >= _telemetry.rules.size()) {
-      Serial.println("  ERROR: Bad ID");
+    if (schedule) {
+      TelemetryRule* scheduled_rule = _telemetry.rules[id];
+      scheduled_rule->next = millis();
+      return;
+    }
+
+    if (curr_telemetry && !schedule) {
+      Serial.println("  ERROR: Already running");
       return;
     }
 
@@ -938,6 +954,15 @@ protected:
       if (pending_telemetry_next < millis()) {
         curr_telemetry_rule->loggedin = false; // unset logged in flag.
         Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
+
+        String msgData;
+        JsonDocument doc2;
+        doc2["type"] = "telemetry_data";
+        doc2["data"]["m"] = "Telemetry read timed out";
+        doc2["data"]["n"] = curr_telemetry->name;
+        serializeJson(doc2, msgData);
+        ws.printfAll(msgData.c_str());
+
         cancelTelemetry();
       }
       return;
@@ -1254,12 +1279,13 @@ public:
 
         if (channel.hash[0] == 0x11) {
           JsonDocument doc2;
-          doc2["t"] = timestamp;
-          doc2["m"] = (char *) &temp[5];
-          doc2["p"] = "flood";
-          doc2["c"] = chhash;
-          doc2["h"] = strhash;
-          doc2["i"] = chatHistoryId++;
+          doc2["type"] = "channel_msg";
+          doc2["data"]["t"] = timestamp;
+          doc2["data"]["m"] = (char *) &temp[5];
+          doc2["data"]["p"] = "flood";
+          doc2["data"]["c"] = chhash;
+          doc2["data"]["h"] = strhash;
+          doc2["data"]["i"] = chatHistoryId++;
           String msgData;
           serializeJson(doc2, msgData);
           addHistory(msgData);
@@ -1637,6 +1663,10 @@ public:
         const char* idstr = &action[4];
         int id = atoi(idstr);
         telemetryRun(id);
+      } else if (memcmp(action, "schedule ", 9) == 0) {
+        const char* idstr = &action[9];
+        int id = atoi(idstr);
+        telemetryRun(id, true, true);
       } else if (memcmp(action, "cancel", 6) == 0) {
         cancelTelemetry();
       } else if (memcmp(action, "runp ", 5) == 0) {

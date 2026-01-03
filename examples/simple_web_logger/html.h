@@ -62,6 +62,17 @@ static const char *htmlSettings PROGMEM = R"(
         input[data-invalid="1"] {
             color: #ff3300;
         }
+
+        pre {
+            font-family: monospace;
+            background: #eee;
+            border-radius: 6px;
+            border: solid 1px #aaa;
+            padding: 6px;
+            margin: 8px 0;
+            color: #444;
+            text-wrap: auto;
+        }
     </style>
 </head>
 <body>
@@ -96,6 +107,10 @@ static const char *htmlSettings PROGMEM = R"(
                 <label><span>Add Telemetry Rule</span><input id="telpk" type="text" placeholder="Public key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'></label>
                 <button onclick='addTelemetry()'>Add</button>
             </div>
+            <div>
+                Telemetry log <button onclick='clearTelemetryLog()'>Clear</button>
+                <pre id="tellg"></pre>
+            <div>
         </div>
 
         <h2>Contacts <button id="btnCon" onclick='fetchContacts(this)'>Load</button></h2>
@@ -121,6 +136,60 @@ static const char *htmlSettings PROGMEM = R"(
 <script>
 let contacts = [];
 let telemetry = [];
+let ws;
+let reconnectTimeout = null;
+
+function checkWebSocket() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        scheduleReconnect();
+        return;
+    }
+
+    try {
+        ws.send(JSON.stringify({ type: "ping" }));
+    } catch {
+        scheduleReconnect();
+    }
+}
+
+function connectWs() {
+    ws = new WebSocket(`ws://${window.location.host}/ws`);
+    ws.onopen = function() {
+        console.log("WebSocket connected");
+    };
+    ws.onmessage = function(event) {
+        console.log("WebSocket message: " + event.data);
+        const data = JSON.parse(event.data);
+        if (data.type === "telemetry_data") {
+            let p = document.getElementById('tellg');
+            p.innerText += data.data.n + ":\n" + data.data.m + "\n\n";
+        }
+    };
+    ws.onclose = function() {
+        console.log("WebSocket closed");
+        scheduleReconnect();
+    };
+    ws.onerror = function(error) {
+        console.log(error);
+        scheduleReconnect();
+    };
+}
+
+function scheduleReconnect() {
+    if (reconnectTimeout) return;
+
+    reconnectTimeout = setTimeout(() => {
+        console.log("Reconnecting WebSocket...");
+        reconnectTimeout = null;
+        connectWs();
+    }, 3000);
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        checkWebSocket();
+    }
+});
 
 function removeContact(id) {
     meshExec([`contacts rm ${id}`], rep => {
@@ -144,6 +213,10 @@ function removeTelemetry(id) {
         }
         loadTelemetry({telemetry});
     });
+}
+
+function runTelemetry(id) {
+    meshExec([`tel schedule ${id}`]);
 }
 
 function fetchSettings() {
@@ -212,6 +285,11 @@ function addTelemetry() {
         fetchTelemetry(document.getElementById('btnTel'));
     });
     k.value = '';
+}
+
+function clearTelemetryLog() {
+    let p = document.getElementById('tellg');
+    p.innerText = '';
 }
 
 function createInput(div, name, type, value, cli, extras={}) {
@@ -388,6 +466,11 @@ function loadTelemetry(data) {
         };
         colAc.append(btnSv);
   
+        let btnRun = document.createElement("button");
+        btnRun.innerText = "Schedule Run";
+        btnRun.onclick = (e) => { runTelemetry(t.id) };  
+        colAc.append(btnRun);
+
         let btnRm = document.createElement("button");
         btnRm.innerText = "Remove";
         btnRm.onclick = (e) => { removeTelemetry(t.id) };  
@@ -433,9 +516,9 @@ function loadSettings(data) {
 }
 
 window.onload = function(e){ 
+    connectWs();
     fetchSettings();
 }
-
 
 </script>
 </html>
@@ -682,7 +765,9 @@ function connectWs() {
     ws.onmessage = function(event) {
         console.log("WebSocket message: " + event.data);
         const data = JSON.parse(event.data);
-        addMessage(data);
+        if (data.type === "channel_msg") {
+            addMessage(data.data);
+        }
     };
     ws.onclose = function() {
         console.log("WebSocket closed");
