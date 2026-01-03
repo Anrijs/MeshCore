@@ -46,6 +46,22 @@ static const char *htmlSettings PROGMEM = R"(
         .prefs-group {
             margin-bottom: 16px;
         }
+
+        .pk {
+            max-width: 300px;
+            display: inline-block;
+            overflow: clip;
+            text-overflow: ellipsis;
+            font-family: monospace;
+        }
+
+        input[data-changed="1"] {
+            color: #0080ff;
+        }
+
+        input[data-invalid="1"] {
+            color: #ff3300;
+        }
     </style>
 </head>
 <body>
@@ -58,18 +74,110 @@ static const char *htmlSettings PROGMEM = R"(
 
         <h2>Logger Preferences</h2>
         <div id="loggerPrefs" class="prefs-group"></div>
+
+        <h2>Telemetry Rules <button id="btnTel" onclick='fetchTelemetry(this)'>Load</button></h2>
+        <div class="prefs-group">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Path</th>
+                        <th>Start</th>
+                        <th>Interval</th>
+                        <th>Password</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="telemetryTable">
+                </tbody>
+            </table>
+            <div class="input-group">
+                <label><span>Add Telemetry Rule</span><input id="telpk" type="text" placeholder="Public key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'></label>
+                <button onclick='addTelemetry()'>Add</button>
+            </div>
+        </div>
+
+        <h2>Contacts <button id="btnCon" onclick='fetchContacts(this)'>Load</button></h2>
+        <div class="prefs-group">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Key</th>
+                        <th>Advert</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="contactsTable">
+
+                </tbody>
+            </table>
+        </div>
     </div>
 </body>
 
 <script>
-function loadData() {
+let contacts = [];
+let telemetry = [];
+
+function removeContact(id) {
+    meshExec([`contacts rm ${id}`], rep => {
+        contacts.splice(id, 1);
+        for (let c of contacts) {
+            if (c && c.id > id) {
+                c.id--;
+            }
+        }
+        loadContacts({contacts});
+    });
+}
+
+function removeTelemetry(id) {
+    meshExec([`tel rm ${id}`], rep => {
+        telemetry.splice(id, 1);
+        for (let t of telemetry) {
+            if (t && t.id > id) {
+                t.id--;
+            }
+        }
+        loadTelemetry({telemetry});
+    });
+}
+
+function fetchSettings() {
     const url = "/settings.json";
     fetch(url)
         .then((response) => response.json())
         .then((json) => loadSettings(json));
 }
 
-function meshExec(cmds) {
+function fetchContacts(e) {
+    e.disabled = true;
+    document.getElementById("contactsTable").innerHTML = "";
+    const url = "/contacts.json";
+    fetch(url)
+        .then((response) => response.json())
+        .then((json) => {
+            loadContacts(json);
+            e.disabled = false;
+        });
+}
+
+function fetchTelemetry(e) {
+    e.disabled = true;
+    document.getElementById("telemetryTable").innerHTML = "";
+    const url = "/telemetry.json";
+    fetch(url)
+        .then((response) => response.json())
+        .then((json) => {
+            loadTelemetry(json);
+            e.disabled = false;
+        });
+}
+
+function meshExec(cmds, cb=null) {
     fetch("/exec", {
         method: "POST",
         body: JSON.stringify({
@@ -80,7 +188,30 @@ function meshExec(cmds) {
         }
     })
     .then((response) => response.json())
-    .then((json) => console.log(json));
+    .then((json) => {
+        if (cb) cb(json);
+    });
+}
+
+function validateAddTelemetry(e) {
+    // oninputs
+    e.dataset.changed = 1;
+    e.dataset.invalid = false;
+    
+    if (!/^(?:[0-9a-fA-F]{2})(?:(?::)?[0-9a-fA-F]{2}){1,}$/.test(e.value)) {
+        e.dataset.changed = 0;
+        e.dataset.invalid = 1;
+    }
+}
+
+function addTelemetry() {
+    let k = document.getElementById('telpk');
+    let v = k.dataset.invalid === "1";
+    if (v) return alert('invalid public key');
+    meshExec([`tel add ${k.value.replaceAll(':', '')}`], () => {
+        fetchTelemetry(document.getElementById('btnTel'));
+    });
+    k.value = '';
 }
 
 function createInput(div, name, type, value, cli, extras={}) {
@@ -144,8 +275,127 @@ function createSaveButton(div, title, inputs) {
     }
 }
 
+function loadContacts(data) {
+    contacts = data["contacts"];
+    const contactsTable = document.getElementById("contactsTable");
+    contactsTable.innerHTML = "";
+
+    for (const c of contacts) {
+        let row = contactsTable.insertRow();
+        let colId = row.insertCell();
+        let colNa = row.insertCell();
+        let colPk = row.insertCell();
+        let colTi = row.insertCell();
+        let colAc = row.insertCell();
+
+        colPk.classList.add('pk');
+
+        let btnRm = document.createElement("button");
+        btnRm.innerText = "Remove";
+        btnRm.onclick = (e) => { removeContact(c.id) };
+  
+        colId.innerText = c.id;
+        colPk.innerText = c.pk;
+        colNa.innerText = c.n;
+        colTi.innerText = new Date(c.a * 1000).toISOString();
+
+        colAc.append(btnRm);
+    }
+}
+
+function loadTelemetry(data) {
+    telemetry = data["telemetry"];
+    const telemetryTable = document.getElementById("telemetryTable");
+    telemetryTable.innerHTML = "";
+
+    let createInput = (parent, value, type, validate=undefined) => {
+        let input = document.createElement("input");
+        input.type = type;
+        input.style.marginRight = "4px";
+        input.style.borderRadius = "4px";
+        input.value = value;
+        input.changed = false;
+        input.oninput = (e) => {
+            input.dataset.changed = true;
+            input.dataset.invalid = false;
+            if (validate) {
+                if (!validate(e.target.value)) {
+                    input.changed = false;
+                    input.dataset.invalid = true;
+                }
+            }
+        }
+        parent.append(input);
+        return input;
+    }
+
+
+    for (const t of telemetry) {
+        let row = telemetryTable.insertRow();
+        let colId = row.insertCell();
+        let colNa = row.insertCell();
+        let colPa = row.insertCell();
+        let colSt = row.insertCell();
+        let colIn = row.insertCell();
+        let colPw = row.insertCell();
+        let colAc = row.insertCell();
+
+        colSt.classList.add('input-group');
+        colIn.classList.add('input-group');
+        colPw.classList.add('input-group');
+
+        colId.innerText = t.id;
+        colNa.innerText = t.name;
+
+        let inPa = createInput(colPa, t.path, "text", (str) => {
+            if (str.toLowerCase() == "flood") return true;
+            return /^$|^[0-9a-fA-F]{2}(?:,[0-9a-fA-F]{2})*$/.test(str);
+        });
+
+        let inSt = createInput(colSt, t.start, "number");
+        inSt.min = 0;
+        inSt.max = 86400;
+
+        let inIn = createInput(colIn, t.interval, "number");
+        inIn.min = 0;
+        inIn.max = 0;
+        inIn.max = 86400;
+
+        let inPw = createInput(colPw, t.password, "text");
+        inPw.maxlength = 15;
+
+        let btnSv = document.createElement("button");
+        btnSv.innerText = "Save";
+        btnSv.onclick = (e) => { 
+            let cmds = [];
+            if (inPa.dataset.changed === "1") {
+                cmds.push(`tel set path ${t.id} ${inPa.value}`);
+                inPa.dataset.changed = 0;
+            }
+            if (inSt.dataset.changed === "1") {
+                cmds.push(`tel set start ${t.id} ${inSt.value}`);
+                inSt.dataset.changed = 0;
+            }
+            if (inIn.dataset.changed === "1") {
+                cmds.push(`tel set interval ${t.id} ${inIn.value}`);
+                inIn.dataset.changed = 0;
+            }
+            if (inPw.dataset.changed === "1") {
+                cmds.push(`tel set password ${t.id} ${inPw.value}`);
+                inPw.dataset.changed = 0;
+            }
+            if (cmds.length) meshExec(cmds);
+        };
+        colAc.append(btnSv);
+  
+        let btnRm = document.createElement("button");
+        btnRm.innerText = "Remove";
+        btnRm.onclick = (e) => { removeTelemetry(t.id) };  
+        colAc.append(btnRm);
+    }
+}
+
 function loadSettings(data) {
-    console.log(data);
     const nodePrefs = data["node_prefs"];
     const wifiPrefs = data["wifi_prefs"];
     const loggerPrefs = data["logger_prefs"];
@@ -183,7 +433,7 @@ function loadSettings(data) {
 }
 
 window.onload = function(e){ 
-    loadData();
+    fetchSettings();
 }
 
 
@@ -256,6 +506,12 @@ static const char *htmlChat PROGMEM = R"(
             font-size: 1rem;
         }
 
+        .msg.system .text {
+            color: #999;
+            font-size: 1rem;
+            font-style: italic;
+        }
+
         .msg .date {
             color: #999;
             font-size: 0.8rem;
@@ -276,17 +532,17 @@ static const char *htmlChat PROGMEM = R"(
 
 <script>
 
-function str2col(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
+function str2color(str, saturation = 65, lightness = 45) {
+    let hash = 0x811c9dc5n;
+    for (let i = 0; i < str.length; i++) {
+        hash = BigInt.asIntN(32, hash ^ BigInt(str.charCodeAt(i)));
+        hash = BigInt.asIntN(32, hash * 0x01000193n);
+    }
 
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 65%, 55%)`;
+    return `hsl(${Number(hash & 0xFFFFFFFFn) % 360}deg, ${saturation}%, ${lightness}%)`;
 }
 
-function loadData() {
+function fetchChat() {
     const url = "/chat.json";
     fetch(url)
         .then((response) => response.json())
@@ -294,7 +550,10 @@ function loadData() {
 }
 
 function addMessage(msg) {
-    let messages = document.getElementById("messages");
+    if (msg.id != -1 && messages.hasOwnProperty(msg.id)) return;
+    messages[msg.id] = msg;
+
+    let msgdiv = document.getElementById("messages");
 
     let root = document.createElement("div");
     let info = document.createElement("div");
@@ -307,6 +566,10 @@ function addMessage(msg) {
     user.classList.add("user");
     date.classList.add("date");
     text.classList.add("text");
+
+    if (msg.classList) {
+        root.classList.add(msg.classList);
+    }
 
     root.appendChild(info);
     root.appendChild(text);
@@ -322,17 +585,23 @@ function addMessage(msg) {
         hour12: false
     });
 
-    user.innerText = msg.m.substr(0, idx);
-    user.style.color = str2col(msg.m.substr(0, idx));
+    if (idx >= 0) {
+        user.innerText = msg.m.substr(0, idx);
+        user.style.color = str2color(msg.m.substr(0, idx));
+        text.innerText = msg.m.substr(idx + 2);
+    } else {
+        user.innerText = 'System';
+        user.style.color = '#999';
+        text.innerText = msg.m;
+    }
 
-    text.innerText = msg.m.substr(idx + 2);
     if (dateDate != todayISO) {
        date.innerText = `${dateTime} ${dateDate}`;
     } else {
        date.innerText = `${dateTime}`;
     }
 
-    messages.appendChild(root);
+    msgdiv.appendChild(root);
 
     return {
         dom: {
@@ -346,19 +615,19 @@ function addMessage(msg) {
     };
 }
 
-var config = {
+let config = {
     sender: ""
 };
 
+let messages = {};
+
+let ws;
+let reconnectTimeout = null;
+
 function loadChat(data) {
-    if (data["name"]) {
+    if (data["name"] && config.sender.length < 1) {
         config.sender = data["name"];
     }
-
-    if (!data["msg"].length) return;
-
-    let messages = document.getElementById("messages");
-    messages.innerHTML = '';
 
     for (const msg of data["msg"]) {
         addMessage(msg);
@@ -367,7 +636,6 @@ function loadChat(data) {
 
 function meshExec(cmds) {
     console.log(`exec: `, cmds);
-
     fetch("/exec", {
         method: "POST",
         body: JSON.stringify({
@@ -382,14 +650,34 @@ function meshExec(cmds) {
 }
 
 window.onload = function(e){ 
-    loadData();
-    openWs();
+    fetchChat();
+    connectWs();
 }
 
-function openWs() {
-    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        checkWebSocket();
+    }
+});
+
+function checkWebSocket() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        scheduleReconnect();
+        return;
+    }
+
+    try {
+        ws.send(JSON.stringify({ type: "ping" }));
+    } catch {
+        scheduleReconnect();
+    }
+}
+
+function connectWs() {
+    ws = new WebSocket(`ws://${window.location.host}/ws`);
     ws.onopen = function() {
         console.log("WebSocket connected");
+        fetchChat();
     };
     ws.onmessage = function(event) {
         console.log("WebSocket message: " + event.data);
@@ -398,11 +686,22 @@ function openWs() {
     };
     ws.onclose = function() {
         console.log("WebSocket closed");
+        scheduleReconnect();
     };
     ws.onerror = function(error) {
-        console.log("WebSocket error: " + error);
-        // todo: reconnect timer: openWs()
+        console.log(error);
+        scheduleReconnect();
     };
+}
+
+function scheduleReconnect() {
+    if (reconnectTimeout) return;
+
+    reconnectTimeout = setTimeout(() => {
+        console.log("Reconnecting WebSocket...");
+        reconnectTimeout = null;
+        connectWs();
+    }, 3000);
 }
 
 function send() {

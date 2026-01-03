@@ -523,6 +523,7 @@ public:
   const NodePrefs* getNodePrefs() { return &_prefs; }
   const LogPrefs* getLogPrefs() { return &_logp; }
   const WiFiPrefs* getWiFiPrefs() { return &_wifi; }
+  const TelemetryRules* getTelemetryRules() { return &_telemetry; }
   const bool debugPrint() { return m_debugPrint; }
 
 private:
@@ -829,7 +830,7 @@ protected:
       doc2["p"] = getPath(pkt);
       doc2["c"] = chhash;
       doc2["h"] = strhash;
-      doc2["i"] = chatHistoryId++;
+      doc2["id"] = chatHistoryId++;
 
       String msgData;
       serializeJson(doc2, msgData);
@@ -2128,6 +2129,92 @@ void setupWebserver() {
     doc["logger_prefs"]["url"] = the_mesh.getLogPrefs()->url;
     doc["logger_prefs"]["auth"] = the_mesh.getLogPrefs()->auth;
     doc["logger_prefs"]["selfreport"] = the_mesh.getLogPrefs()->selfreport;
+
+    String postData;
+    serializeJson(doc, postData);
+
+    request->send(200, "application/json", postData);
+  });
+
+  server.on("/contacts.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    JsonArray arr = doc["contacts"].to<JsonArray>();
+
+    ContactsIterator iter;
+    ContactInfo c;
+    int i = 0;
+
+    while (iter.hasNext(&the_mesh, c)) {
+      JsonDocument obj;
+      obj["id"] = i++;
+
+      String tmp = "";
+      for (int j=0;j<PUB_KEY_SIZE;j++) {
+        if (j > 0) tmp += ':';
+        if (c.id.pub_key[j] < 0x10) tmp += '0';
+        tmp += String(c.id.pub_key[j], HEX);
+      }
+      obj["pk"] = tmp;
+      obj["n"] = c.name;
+      obj["t"] = c.type;
+      obj["m"] = c.lastmod;
+      obj["s"] = c.sync_since;
+      obj["a"] = c.last_advert_timestamp;
+
+      arr.add(obj);
+    }
+
+    String postData;
+    serializeJson(doc, postData);
+
+    request->send(200, "application/json", postData);
+  });
+
+  server.on("/telemetry.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    JsonArray arr = doc["telemetry"].to<JsonArray>();
+
+    const TelemetryRules* tel = the_mesh.getTelemetryRules();
+
+    for (int i=0; i<tel->rules.size(); i++) {
+      JsonDocument obj;
+      obj["id"] = i;
+
+      TelemetryRule* rule = tel->rules[i];
+      ContactInfo* c = the_mesh.lookupContactByPubKey(rule->pubkey, rule->key_len);
+
+      String tmp = "";
+      for (int j=0;j<rule->key_len && j < PUB_KEY_SIZE;j++) {
+        if (j > 0) tmp += ':';
+        if (rule->pubkey[j] < 0x10) tmp += '0';
+        tmp += String(rule->pubkey[j], HEX);
+      }
+      obj["pk"] = tmp;
+
+      tmp = "";
+      if (rule->path_len == -1) {
+        tmp = "Flood";
+      } else {
+        for (int j=0;j<rule->path_len && j<MAX_PATH_SIZE;j++) {
+          if (j > 0) tmp += ',';
+          if (rule->path[j] < 0x10) tmp += '0';
+          tmp += String(rule->path[j], HEX);
+        }
+      }
+      obj["path"] = tmp;
+      obj["password"] = rule->password;
+      obj["start"] = rule->start;
+      obj["interval"] = rule->interval;
+      obj["next"] = rule->next;
+      obj["loggedin"] = rule->loggedin;
+      
+      if (c) {
+        obj["name"] = c->name;
+      } else {
+        obj["name"] = "unknown";
+      }
+      arr.add(obj);
+    }
 
     String postData;
     serializeJson(doc, postData);
