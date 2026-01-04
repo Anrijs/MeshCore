@@ -708,12 +708,14 @@ let ws;
 let reconnectTimeout = null;
 
 function loadChat(data) {
-    if (data["name"] && config.sender.length < 1) {
-        config.sender = data["name"];
+    if (data.name && config.sender.length < 1) {
+        config.sender = data.name;
     }
 
-    for (const msg of data["msg"]) {
-        addMessage(msg);
+    for (const msg of data.msg) {
+        if (msg.type === "channel_msg") {
+            addMessage(msg.data);
+        }
     }
 }
 
