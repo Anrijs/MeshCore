@@ -823,6 +823,7 @@ protected:
 
     String msgData;
     serializeJson(doc2, msgData);
+    addHistory(msgData);
     ws.printfAll(msgData.c_str());
     }
   }
@@ -1276,6 +1277,7 @@ public:
 
         String msgData;
         serializeJson(doc2, msgData);
+        addHistory(msgData);
         ws.printfAll(msgData.c_str());
       } else {
         Serial.println("   ERROR: unable to send");
