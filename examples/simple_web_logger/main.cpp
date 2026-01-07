@@ -238,8 +238,6 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   unsigned long last_msg_sent;
   std::vector<String> chatHistory;
   long chatHistoryId = 0;
-  long chatWsHistoryId = 0;
-  int chatWsHistoryPend = 0;
 
   ContactInfo* curr_recipient;
   ContactInfo* curr_telemetry;
@@ -480,23 +478,12 @@ public:
     }
 
     chatHistory.push_back(str);
-    chatWsHistoryPend++;
-
-    if (chatWsHistoryPend > 50) chatWsHistoryPend = 50;
   }
 
   int getHistorySize() {
     return chatHistory.size();
   }
 
-  int getHistoryPending() {
-    return chatWsHistoryPend;
-  }
-
-  void resetHistoryPending() {
-    chatWsHistoryPend = 0;
-  }
-  
   String getHistory(int index) {
     if (index >= chatHistory.size()) return "";
     return chatHistory[index];
@@ -764,12 +751,14 @@ protected:
     // Special commands
     if (strcmp(text, "clock sync") == 0) {  // special text command
       setClock(sender_timestamp + 1, false);
-    } else if (memcmp(text, "echo ", 5) == 0) {  // special text command
-      const char* echo = &text[5];
-      uint32_t est_timeout;
-      last_msg_sent = _ms->getMillis();
-      sendMessage(from, getRTCClock()->getCurrentTime(), 0, echo, expected_ack_crc, est_timeout);
     }
+
+    String msgData;
+    JsonDocument doc2;
+    doc2["type"] = "direct_message";
+    doc2["data"] = doc;
+    serializeJson(doc2, msgData);
+    ws.printfAll(msgData.c_str());
   }
 
   void onCommandDataRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) override {
@@ -822,21 +811,18 @@ protected:
 
     if (_tables->hasSeen2(pkt)) return;
 
-    // public only
-    if (channel.hash[0] == 0x11) {
-      JsonDocument doc2;
-      doc2["type"] = "channel_msg";
-      doc2["data"]["t"] = timestamp;
-      doc2["data"]["m"] = text;
-      doc2["data"]["p"] = getPath(pkt);
-      doc2["data"]["c"] = chhash;
-      doc2["data"]["h"] = strhash;
-      doc2["data"]["id"] = chatHistoryId++;
+    JsonDocument doc2;
+    doc2["type"] = "channel_msg";
+    doc2["data"]["t"] = timestamp;
+    doc2["data"]["m"] = text;
+    doc2["data"]["p"] = getPath(pkt);
+    doc2["data"]["c"] = chhash;
+    doc2["data"]["h"] = strhash;
+    doc2["data"]["id"] = chatHistoryId++;
 
-      String msgData;
-      serializeJson(doc2, msgData);
-
-      addHistory(msgData);
+    String msgData;
+    serializeJson(doc2, msgData);
+    ws.printfAll(msgData.c_str());
     }
   }
 
@@ -2060,15 +2046,6 @@ void WiFiTaskCode(void * pvParameters) {
             }
           }
         }
-      }
-
-      if (the_mesh.getHistoryPending() > 0) {
-        int start = the_mesh.getHistorySize() - the_mesh.getHistoryPending();
-
-        for (int i = start; i >= 0 && i < the_mesh.getHistorySize(); i++) {
-          ws.printfAll(the_mesh.getHistory(i).c_str());
-        }
-        the_mesh.resetHistoryPending();
       }
 
       ws.cleanupClients(5); 

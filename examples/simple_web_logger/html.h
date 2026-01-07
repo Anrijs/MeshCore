@@ -636,6 +636,8 @@ function addMessage(msg) {
     if (msg.id != -1 && messages.hasOwnProperty(msg.id)) return;
     messages[msg.id] = msg;
 
+    if (msg.c != '11') return;
+
     let msgdiv = document.getElementById("messages");
 
     let root = document.createElement("div");
@@ -713,7 +715,7 @@ function loadChat(data) {
     }
 
     for (const msg of data.msg) {
-        if (msg.type === "channel_msg") {
+        if (msg.type === "channel_message") {
             addMessage(msg.data);
         }
     }
