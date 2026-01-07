@@ -812,12 +812,13 @@ protected:
     if (_tables->hasSeen2(pkt)) return;
 
     JsonDocument doc2;
-    doc2["type"] = "channel_msg";
+    doc2["type"] = "channel_message";
     doc2["data"]["t"] = timestamp;
     doc2["data"]["m"] = text;
     doc2["data"]["p"] = getPath(pkt);
     doc2["data"]["c"] = chhash;
     doc2["data"]["h"] = strhash;
+    doc2["data"]["ch"] = findChannelIdx(channel);
     doc2["data"]["id"] = chatHistoryId++;
 
     String msgData;
@@ -1263,19 +1264,19 @@ public:
 
         Serial.println("   Sent.");
 
-        if (channel.hash[0] == 0x11) {
-          JsonDocument doc2;
-          doc2["type"] = "channel_msg";
-          doc2["data"]["t"] = timestamp;
-          doc2["data"]["m"] = (char *) &temp[5];
-          doc2["data"]["p"] = "flood";
-          doc2["data"]["c"] = chhash;
-          doc2["data"]["h"] = strhash;
-          doc2["data"]["i"] = chatHistoryId++;
-          String msgData;
-          serializeJson(doc2, msgData);
-          addHistory(msgData);
-        }
+        JsonDocument doc2;
+        doc2["type"] = "channel_message";
+        doc2["data"]["t"] = timestamp;
+        doc2["data"]["m"] = (char *) &temp[5];
+        doc2["data"]["p"] = "flood";
+        doc2["data"]["c"] = chhash;
+        doc2["data"]["h"] = strhash;
+        doc2["data"]["ch"] = findChannelIdx(channel);
+        doc2["data"]["id"] = chatHistoryId++;
+
+        String msgData;
+        serializeJson(doc2, msgData);
+        ws.printfAll(msgData.c_str());
       } else {
         Serial.println("   ERROR: unable to send");
       }

@@ -769,7 +769,7 @@ function connectWs() {
     ws.onmessage = function(event) {
         console.log("WebSocket message: " + event.data);
         const data = JSON.parse(event.data);
-        if (data.type === "channel_msg") {
+        if (data.type === "channel_message") {
             addMessage(data.data);
         }
     };
