@@ -2256,8 +2256,28 @@ void setupWebserver() {
     [](AsyncWebServerRequest *request) { },
     NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        String *body = new String();
+        body->reserve(total);
+        request->_tempObject = body;
+      }
+
+      String *body = static_cast<String *>(request->_tempObject);
+      if (!body) {
+        request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        return;
+      }
+
+      body->concat(reinterpret_cast<const char *>(data), len);
+
+      if (index + len < total) {
+        return;
+      }
+
       JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, data, len);
+      DeserializationError error = deserializeJson(doc, *body);
+      delete body;
+      request->_tempObject = nullptr;
 
       if (error) {
         request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
