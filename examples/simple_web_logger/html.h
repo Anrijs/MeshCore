@@ -1,94 +1,56 @@
 static const char *htmlSettings PROGMEM = R"(
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MeshCore Logger</title>
-    <style>
-        * {
-            padding: 0;
-            margin: 0;
-            font-family: sans-serif;
-        }
-
-        #contents {
-            padding: 24px;
-        }
-
-        input {
-            background: #f8f8f8;
-            border: solid 1px #bcbcbc;
-            border-radius: 8px;
-            padding: 4px;
-        }
-
-        button {
-            border: solid 1px #a5a5a5;
-            padding: 4px;
-            border-radius: 7px;
-        }
-
-        .input-group {
-            margin: 8px 0;
-        }
-        
-        .input-group label span {
-            display: inline-block;
-            min-width: 160px;
-        }
-
-        .input-group label input {
-            display: inline-block;
-            min-width: 320px;
-        }
-
-        .prefs-group {
-            margin-bottom: 16px;
-        }
-
-        .pk {
-            max-width: 300px;
-            display: inline-block;
-            overflow: clip;
-            text-overflow: ellipsis;
-            font-family: monospace;
-        }
-
-        input[data-changed="1"] {
-            color: #0080ff;
-        }
-
-        input[data-invalid="1"] {
-            color: #ff3300;
-        }
-
-        pre {
-            font-family: monospace;
-            background: #eee;
-            border-radius: 6px;
-            border: solid 1px #aaa;
-            padding: 6px;
-            margin: 8px 0;
-            color: #444;
-            text-wrap: auto;
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 </head>
 <body>
-    <div id="contents">
-        <h2>Node Preferences</h2>
-        <div id="nodePrefs" class="prefs-group"></div>
+    <main id="contents" class="container">
+        <header>
+            <hgroup>
+                <h1>MeshCore Logger</h1>
+                <p>Node preferences, network configuration, and telemetry control.</p>
+            </hgroup>
+        </header>
 
-        <h2>WiFi Preferences</h2>
-        <div id="wifiPrefs" class="prefs-group"></div>
+        <article>
+            <header>
+                <h2>Node Preferences</h2>
+            </header>
+            <div id="nodePrefs" class="prefs-group"></div>
+        </article>
 
-        <h2>Logger Preferences</h2>
-        <div id="loggerPrefs" class="prefs-group"></div>
+        <article>
+            <header>
+                <h2>WiFi Preferences</h2>
+            </header>
+            <div id="wifiPrefs" class="prefs-group"></div>
+        </article>
 
-        <h2>Telemetry Rules <button id="btnTel" onclick='fetchTelemetry(this)'>Load</button></h2>
-        <div class="prefs-group">
-            <table>
+        <article>
+            <header>
+                <h2>Logger Preferences</h2>
+            </header>
+            <div id="loggerPrefs" class="prefs-group"></div>
+        </article>
+
+        <article>
+            <header>
+                <div class="grid">
+                    <div>
+                        <h2>Telemetry Rules</h2>
+                        <p>Define collection paths, schedules, and credentials.</p>
+                    </div>
+                    <div>
+                        <button id="btnTel" class="secondary small" onclick='fetchTelemetry(this)'>Load</button>
+                    </div>
+                </div>
+            </header>
+            <div class="prefs-group">
+                <table class="striped compact">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -103,19 +65,35 @@ static const char *htmlSettings PROGMEM = R"(
                 <tbody id="telemetryTable">
                 </tbody>
             </table>
-            <div class="input-group">
-                <label><span>Add Telemetry Rule</span><input id="telpk" type="text" placeholder="Public key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'></label>
-                <button onclick='addTelemetry()'>Add</button>
+            <div class="grid input-group">
+                <label>Public key
+                    <input id="telpk" class="small" type="text" placeholder="Add telemetry rule key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'>
+                </label>
+                <div role="group">
+                    <button class="small" onclick='addTelemetry()'>Add</button>
+                    <button class="secondary small" onclick='clearTelemetryLog()'>Clear</button>
+                </div>
             </div>
-            <div>
-                Telemetry log <button onclick='clearTelemetryLog()'>Clear</button>
-                <pre id="tellg"></pre>
-            <div>
-        </div>
+            <strong>Telemetry log</strong>
+            <pre id="tellg"></pre>
+            </div>
+        </article>
 
-        <h2>Contacts <button id="btnCon" onclick='fetchContacts(this)'>Load</button></h2>
-        <div class="prefs-group">
-            <table>
+        <article>
+            <header>
+                <div class="grid">
+                    <div>
+                        <h2>Contacts</h2>
+                        <p>Known peers and advertised keys.</p>
+                    </div>
+                    <div>
+                        <button id="btnCon" class="secondary small" onclick='fetchContacts(this)'>Load</button>
+                    </div>
+                </div>
+            </header>
+            <div class="prefs-group">
+                <div class="overflow-auto">
+                <table class="striped compact">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -129,8 +107,10 @@ static const char *htmlSettings PROGMEM = R"(
 
                 </tbody>
             </table>
-        </div>
-    </div>
+                </div>
+            </div>
+        </article>
+    </main>
 </body>
 
 <script>
@@ -269,11 +249,13 @@ function meshExec(cmds, cb=null) {
 function validateAddTelemetry(e) {
     // oninputs
     e.dataset.changed = 1;
-    e.dataset.invalid = false;
+    e.dataset.invalid = 0;
+    e.setAttribute("aria-invalid", "false");
     
     if (!/^(?:[0-9a-fA-F]{2})(?:(?::)?[0-9a-fA-F]{2}){1,}$/.test(e.value)) {
         e.dataset.changed = 0;
         e.dataset.invalid = 1;
+        e.setAttribute("aria-invalid", "true");
     }
 }
 
@@ -297,6 +279,7 @@ function createInput(div, name, type, value, cli, extras={}) {
     let label = document.createElement("label");
     let title = document.createElement("span");
     let input = document.createElement("input");
+    input.classList.add("small");
     label.appendChild(title);
     label.appendChild(input);
     group.appendChild(label);
@@ -336,6 +319,7 @@ function createInput(div, name, type, value, cli, extras={}) {
 function createSaveButton(div, title, inputs) {
     let button = document.createElement("button");
     button.innerText = title;
+    button.classList.add("small");
     button.onclick = (e) => {
         let commands = [];
         for (const input of inputs) {
@@ -389,17 +373,18 @@ function loadTelemetry(data) {
     let createInput = (parent, value, type, validate=undefined) => {
         let input = document.createElement("input");
         input.type = type;
-        input.style.marginRight = "4px";
-        input.style.borderRadius = "4px";
+        input.classList.add("small");
         input.value = value;
         input.changed = false;
         input.oninput = (e) => {
             input.dataset.changed = true;
-            input.dataset.invalid = false;
+            input.dataset.invalid = 0;
+            input.setAttribute("aria-invalid", "false");
             if (validate) {
                 if (!validate(e.target.value)) {
                     input.changed = false;
-                    input.dataset.invalid = true;
+                    input.dataset.invalid = 1;
+                    input.setAttribute("aria-invalid", "true");
                 }
             }
         }
@@ -421,6 +406,8 @@ function loadTelemetry(data) {
         colSt.classList.add('input-group');
         colIn.classList.add('input-group');
         colPw.classList.add('input-group');
+        colAc.setAttribute("role", "group");
+        colAc.setAttribute("nowrap", "nowrap");
 
         colId.innerText = t.id;
         colNa.innerText = t.name;
@@ -433,17 +420,20 @@ function loadTelemetry(data) {
         let inSt = createInput(colSt, t.start, "number");
         inSt.min = 0;
         inSt.max = 86400;
+        inSt.size = 6;
 
         let inIn = createInput(colIn, t.interval, "number");
         inIn.min = 0;
         inIn.max = 0;
         inIn.max = 86400;
+        inIn.size = 6;
 
         let inPw = createInput(colPw, t.password, "text");
         inPw.maxlength = 15;
 
         let btnSv = document.createElement("button");
         btnSv.innerText = "Save";
+        btnSv.classList.add("small");
         btnSv.onclick = (e) => { 
             let cmds = [];
             if (inPa.dataset.changed === "1") {
@@ -467,12 +457,14 @@ function loadTelemetry(data) {
         colAc.append(btnSv);
   
         let btnRun = document.createElement("button");
-        btnRun.innerText = "Schedule Run";
+        btnRun.innerText = "Run";
+        btnRun.classList.add("small", "secondary");
         btnRun.onclick = (e) => { runTelemetry(t.id) };  
         colAc.append(btnRun);
 
         let btnRm = document.createElement("button");
         btnRm.innerText = "Remove";
+        btnRm.classList.add("small", "secondary", "outline");
         btnRm.onclick = (e) => { removeTelemetry(t.id) };  
         colAc.append(btnRm);
     }
