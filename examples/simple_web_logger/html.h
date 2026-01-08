@@ -9,33 +9,36 @@ static const char *htmlSettings PROGMEM = R"(
 </head>
 <body>
     <main id="contents" class="container">
-        <section>
+        <section style="margin-bottom: 2.4rem;">
             <h1>MeshCore Logger</h1>
             <p>Node preferences, network configuration, and telemetry control.</p>
         </section>
 
-        <section>
+        <section style="margin-bottom: 2.4rem;">
             <h2>Node Preferences</h2>
             <div id="nodePrefs" class="prefs-group"></div>
         </section>
 
-        <section>
+        <hr>
+        <section style="margin-bottom: 2.4rem;">
             <h2>WiFi Preferences</h2>
             <div id="wifiPrefs" class="prefs-group"></div>
         </section>
 
-        <section>
+        <hr>
+        <section style="margin-bottom: 2.4rem;">
             <h2>Logger Preferences</h2>
             <div id="loggerPrefs" class="prefs-group"></div>
         </section>
 
-        <section>
+        <hr>
+        <section style="margin-bottom: 2.4rem;">
             <div class="row">
                 <div class="column">
                     <h2>Telemetry Rules</h2>
                     <p>Define collection paths, schedules, and credentials.</p>
                 </div>
-                <div class="column">
+                <div class="column" style="text-align: right;">
                     <button id="btnTel" onclick='fetchTelemetry(this)'>Load</button>
                 </div>
             </div>
@@ -55,15 +58,14 @@ static const char *htmlSettings PROGMEM = R"(
                 <tbody id="telemetryTable">
                 </tbody>
             </table>
+            <label>Public key</label>
             <div class="row input-group">
-                <div class="column column-75">
-                    <label>Public key
+                <div class="column">
+                    <div style="display: flex; gap: 0.6rem; align-items: center;">
                         <input id="telpk" type="text" placeholder="Add telemetry rule key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'>
-                    </label>
-                </div>
-                <div class="column column-25">
-                    <button onclick='addTelemetry()'>Add</button>
-                    <button class="button-clear" onclick='clearTelemetryLog()'>Clear</button>
+                        <button onclick='addTelemetry()'>Add</button>
+                        <button class="button-clear" onclick='clearTelemetryLog()'>Clear</button>
+                    </div>
                 </div>
             </div>
             <strong>Telemetry log</strong>
@@ -71,13 +73,14 @@ static const char *htmlSettings PROGMEM = R"(
             </div>
         </section>
 
+        <hr>
         <section>
             <div class="row">
                 <div class="column">
                     <h2>Contacts</h2>
                     <p>Known peers and advertised keys.</p>
                 </div>
-                <div class="column">
+                <div class="column" style="text-align: right;">
                     <button id="btnCon" onclick='fetchContacts(this)'>Load</button>
                 </div>
             </div>
@@ -393,8 +396,16 @@ function loadTelemetry(data) {
         colSt.classList.add('input-group');
         colIn.classList.add('input-group');
         colPw.classList.add('input-group');
-        colAc.setAttribute("role", "group");
-        colAc.setAttribute("nowrap", "nowrap");
+        colSt.style.verticalAlign = "middle";
+        colIn.style.verticalAlign = "middle";
+        colPw.style.verticalAlign = "middle";
+        colAc.style.verticalAlign = "middle";
+        colAc.style.whiteSpace = "nowrap";
+
+        let actionGroup = document.createElement("div");
+        actionGroup.style.display = "flex";
+        actionGroup.style.gap = "0.6rem";
+        actionGroup.style.alignItems = "center";
 
         colId.innerText = t.id;
         colNa.innerText = t.name;
@@ -440,17 +451,18 @@ function loadTelemetry(data) {
             }
             if (cmds.length) meshExec(cmds);
         };
-        colAc.append(btnSv);
+        actionGroup.append(btnSv);
   
         let btnRun = document.createElement("button");
         btnRun.innerText = "Run";
         btnRun.onclick = (e) => { runTelemetry(t.id) };  
-        colAc.append(btnRun);
+        actionGroup.append(btnRun);
 
         let btnRm = document.createElement("button");
         btnRm.innerText = "Remove";
         btnRm.onclick = (e) => { removeTelemetry(t.id) };  
-        colAc.append(btnRm);
+        actionGroup.append(btnRm);
+        colAc.append(actionGroup);
     }
 }
 
