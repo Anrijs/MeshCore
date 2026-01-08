@@ -1,56 +1,46 @@
 static const char *htmlSettings PROGMEM = R"(
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MeshCore Logger</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/milligram@1.4.1/dist/milligram.min.css">
 </head>
 <body>
     <main id="contents" class="container">
-        <header>
-            <hgroup>
-                <h1>MeshCore Logger</h1>
-                <p>Node preferences, network configuration, and telemetry control.</p>
-            </hgroup>
-        </header>
+        <section>
+            <h1>MeshCore Logger</h1>
+            <p>Node preferences, network configuration, and telemetry control.</p>
+        </section>
 
-        <article>
-            <header>
-                <h2>Node Preferences</h2>
-            </header>
+        <section>
+            <h2>Node Preferences</h2>
             <div id="nodePrefs" class="prefs-group"></div>
-        </article>
+        </section>
 
-        <article>
-            <header>
-                <h2>WiFi Preferences</h2>
-            </header>
+        <section>
+            <h2>WiFi Preferences</h2>
             <div id="wifiPrefs" class="prefs-group"></div>
-        </article>
+        </section>
 
-        <article>
-            <header>
-                <h2>Logger Preferences</h2>
-            </header>
+        <section>
+            <h2>Logger Preferences</h2>
             <div id="loggerPrefs" class="prefs-group"></div>
-        </article>
+        </section>
 
-        <article>
-            <header>
-                <div class="grid">
-                    <div>
-                        <h2>Telemetry Rules</h2>
-                        <p>Define collection paths, schedules, and credentials.</p>
-                    </div>
-                    <div>
-                        <button id="btnTel" class="secondary small" onclick='fetchTelemetry(this)'>Load</button>
-                    </div>
+        <section>
+            <div class="row">
+                <div class="column">
+                    <h2>Telemetry Rules</h2>
+                    <p>Define collection paths, schedules, and credentials.</p>
                 </div>
-            </header>
+                <div class="column">
+                    <button id="btnTel" onclick='fetchTelemetry(this)'>Load</button>
+                </div>
+            </div>
             <div class="prefs-group">
-                <table class="striped compact">
+                <table>
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -65,35 +55,35 @@ static const char *htmlSettings PROGMEM = R"(
                 <tbody id="telemetryTable">
                 </tbody>
             </table>
-            <div class="grid input-group">
-                <label>Public key
-                    <input id="telpk" class="small" type="text" placeholder="Add telemetry rule key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'>
-                </label>
-                <div role="group">
-                    <button class="small" onclick='addTelemetry()'>Add</button>
-                    <button class="secondary small" onclick='clearTelemetryLog()'>Clear</button>
+            <div class="row input-group">
+                <div class="column column-75">
+                    <label>Public key
+                        <input id="telpk" type="text" placeholder="Add telemetry rule key" oninput='validateAddTelemetry(this)' data-invalid='1' data-changed='0'>
+                    </label>
+                </div>
+                <div class="column column-25">
+                    <button onclick='addTelemetry()'>Add</button>
+                    <button class="button-clear" onclick='clearTelemetryLog()'>Clear</button>
                 </div>
             </div>
             <strong>Telemetry log</strong>
             <pre id="tellg"></pre>
             </div>
-        </article>
+        </section>
 
-        <article>
-            <header>
-                <div class="grid">
-                    <div>
-                        <h2>Contacts</h2>
-                        <p>Known peers and advertised keys.</p>
-                    </div>
-                    <div>
-                        <button id="btnCon" class="secondary small" onclick='fetchContacts(this)'>Load</button>
-                    </div>
+        <section>
+            <div class="row">
+                <div class="column">
+                    <h2>Contacts</h2>
+                    <p>Known peers and advertised keys.</p>
                 </div>
-            </header>
+                <div class="column">
+                    <button id="btnCon" onclick='fetchContacts(this)'>Load</button>
+                </div>
+            </div>
             <div class="prefs-group">
-                <div class="overflow-auto">
-                <table class="striped compact">
+                <div style="overflow-x:auto">
+                <table>
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -109,7 +99,7 @@ static const char *htmlSettings PROGMEM = R"(
             </table>
                 </div>
             </div>
-        </article>
+        </section>
     </main>
 </body>
 
@@ -279,7 +269,6 @@ function createInput(div, name, type, value, cli, extras={}) {
     let label = document.createElement("label");
     let title = document.createElement("span");
     let input = document.createElement("input");
-    input.classList.add("small");
     label.appendChild(title);
     label.appendChild(input);
     group.appendChild(label);
@@ -319,7 +308,6 @@ function createInput(div, name, type, value, cli, extras={}) {
 function createSaveButton(div, title, inputs) {
     let button = document.createElement("button");
     button.innerText = title;
-    button.classList.add("small");
     button.onclick = (e) => {
         let commands = [];
         for (const input of inputs) {
@@ -373,7 +361,6 @@ function loadTelemetry(data) {
     let createInput = (parent, value, type, validate=undefined) => {
         let input = document.createElement("input");
         input.type = type;
-        input.classList.add("small");
         input.value = value;
         input.changed = false;
         input.oninput = (e) => {
@@ -433,7 +420,6 @@ function loadTelemetry(data) {
 
         let btnSv = document.createElement("button");
         btnSv.innerText = "Save";
-        btnSv.classList.add("small");
         btnSv.onclick = (e) => { 
             let cmds = [];
             if (inPa.dataset.changed === "1") {
@@ -458,13 +444,11 @@ function loadTelemetry(data) {
   
         let btnRun = document.createElement("button");
         btnRun.innerText = "Run";
-        btnRun.classList.add("small", "secondary");
         btnRun.onclick = (e) => { runTelemetry(t.id) };  
         colAc.append(btnRun);
 
         let btnRm = document.createElement("button");
         btnRm.innerText = "Remove";
-        btnRm.classList.add("small", "secondary", "outline");
         btnRm.onclick = (e) => { removeTelemetry(t.id) };  
         colAc.append(btnRm);
     }
