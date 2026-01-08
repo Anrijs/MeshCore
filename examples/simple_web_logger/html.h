@@ -454,7 +454,7 @@ function loadTelemetry(data) {
         actionGroup.append(btnSv);
   
         let btnRun = document.createElement("button");
-        btnRun.innerText = "Run";
+        btnRun.innerText = "Schedule";
         btnRun.onclick = (e) => { runTelemetry(t.id) };  
         actionGroup.append(btnRun);
 
