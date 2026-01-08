@@ -84,6 +84,7 @@ TaskHandle_t WiFiTask;
 void WiFiTaskCode(void* pvParameters);
 
 // Web
+void setupWebserver();
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 
@@ -1936,6 +1937,7 @@ void halt() {
 void WiFiTaskCode(void * pvParameters) {
   static bool connected = false;
   static bool sendsys   = false;
+  static bool webserver = false;
   static unsigned sendFailures = 0;
   static unsigned long lastConencted = 0;
   static unsigned long nextReport = 30000;
@@ -2051,7 +2053,13 @@ void WiFiTaskCode(void * pvParameters) {
         }
       }
 
-      ws.cleanupClients(5); 
+      if (webserver) {
+        ws.cleanupClients(5); 
+      } else if (!webserver && the_mesh.getLogPrefs()->web) {
+        Serial.println("Start webserver");
+        setupWebserver();
+        webserver = true;
+      }
     } else if (connected && (millis() > (lastConencted + 5000) || sendFailures > 5)) {
       connected = false;
       sendFailures = 0;
@@ -2311,11 +2319,6 @@ void setup() {
 
   int core = xPortGetCoreID() == 1 ? 0 : 1;
   startWifiTask(core);
-
-  if (the_mesh.getLogPrefs()->web) {
-    Serial.println("Start webserver");
-    setupWebserver();
-  }
 }
 
 void loop() {
