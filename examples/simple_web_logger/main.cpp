@@ -826,7 +826,6 @@ protected:
     serializeJson(doc2, msgData);
     addHistory(msgData);
     ws.printfAll(msgData.c_str());
-    }
   }
 
   uint8_t onContactRequest(const ContactInfo& contact, uint32_t sender_timestamp, const uint8_t* data, uint8_t len, uint8_t* reply) override {
