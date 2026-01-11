@@ -1421,7 +1421,7 @@ public:
 
         if (parts.size() < 2) { // value can be optional
           Serial.println("  ERROR: Not enough params");
-      } else {
+        } else {
           int id = parts.at(0).toInt();
           ChannelDetails ch;
           if (getChannel(id, ch)) {
@@ -1862,9 +1862,37 @@ public:
             break;
           }
         }
-       } else if (memcmp(action, "save", 4) == 0) {
+      } else if (memcmp(action, "save", 4) == 0) {
         saveContacts();
         Serial.println("Contacts saved");
+      } else if (memcmp(action, "msg ", 4) == 0) {
+        const char* cdata = &action[4];
+        std::vector<String> parts = split(cdata, 2);
+        // 0 = contact_id
+        // 1 = message
+
+        if (parts.size() < 2) { // value can be optional
+          Serial.println("  ERROR: Not enough params");
+        } else {
+          int id = parts.at(0).toInt();
+
+          ContactInfo c;
+          if (!getContactByIdx(id, c)) {
+            Serial.println("  ERROR: Bad contact ID");
+          } else {
+            // send message
+            String text = parts.at(1);
+            uint32_t est_timeout;
+
+            int result = sendMessage(c, getRTCClock()->getCurrentTime(), 0, parts.at(1).c_str(), expected_ack_crc, est_timeout);
+            if (result == MSG_SEND_FAILED) {
+              Serial.println("   ERROR: unable to send.");
+            } else {
+              last_msg_sent = _ms->getMillis();
+              Serial.printf("   (message sent - %s)\n", result == MSG_SEND_SENT_FLOOD ? "FLOOD" : "DIRECT");
+            }
+          }
+        }
       }
     } else if (memcmp(command, "help", 4) == 0) {
       Serial.println("Commands:");
