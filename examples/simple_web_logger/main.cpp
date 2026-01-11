@@ -617,20 +617,26 @@ protected:
     return act;
   }
 
-  void onAdvertRecv(mesh::Packet* pkt, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) {
-    ContactInfo* from = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
-    bool is_new = from == NULL;
-    BaseChatMesh::onAdvertRecv(pkt, id, timestamp, app_data, app_data_len);  // chain to super impl
-    from = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
+  AdvertDataParser* reportAdv(mesh::Packet* pkt, bool is_new) {
+    AdvertDataParser* parser = nullptr;
+    int i = 0;
+    mesh::Identity id;
+    memcpy(id.pub_key, &pkt->payload[i], PUB_KEY_SIZE); i += PUB_KEY_SIZE;
+    uint32_t timestamp;
+    memcpy(&timestamp, &pkt->payload[i], 4); i += 4;
+    const uint8_t* signature = &pkt->payload[i]; i += SIGNATURE_SIZE;
+    uint8_t* app_data = &pkt->payload[i];
+    int app_data_len = pkt->payload_len - i;
 
-    if (!from) {
-      Serial.println("ERROR: onAdvertRecv: Contact not found!");
+    if (i > pkt->payload_len) {
+      // Incomplete packet
+      return parser;
     }
 
-    AdvertDataParser parser(app_data, app_data_len);
-    if (!(parser.isValid() && parser.hasName())) {
+    parser = new AdvertDataParser(app_data, app_data_len);
+    if (!(parser->isValid() && parser->hasName())) {
       Serial.printf("ERROR: onAdvertRecv: invalid app_data, or name is missing: len=%d\n", app_data_len);
-      return;
+      return parser;
     }
 
     uint8_t hash[MAX_HASH_SIZE];
@@ -653,23 +659,42 @@ protected:
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = timestamp;
     doc["contact"]["new"] = is_new;
-    doc["contact"]["type"] = parser.getType();
-    doc["contact"]["feat1"] = parser.getFeat1();
-    doc["contact"]["feat2"] = parser.getFeat2();
+    doc["contact"]["type"] = parser->getType();
+    doc["contact"]["feat1"] = parser->getFeat1();
+    doc["contact"]["feat2"] = parser->getFeat2();
     doc["contact"]["flags"] = app_data[0];
-    doc["contact"]["name"] = parser.getName();
+    doc["contact"]["name"] = parser->getName();
     doc["contact"]["pubkey"] = pubkey;
-    doc["contact"]["lat"] = parser.getIntLat();
-    doc["contact"]["lon"] = parser.getIntLon();
+    doc["contact"]["lat"] = parser->getIntLat();
+    doc["contact"]["lon"] = parser->getIntLon();
     doc["message"]["path"] = getPath(pkt);
     messageQueue.push(doc);
     rawDecoded = true;
 
+    return parser;
+  }
+
+  void onAdvertRecv(mesh::Packet* pkt, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) {
+    ContactInfo* from = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
+    bool is_new = from == NULL;
+    BaseChatMesh::onAdvertRecv(pkt, id, timestamp, app_data, app_data_len);  // chain to super impl
+    from = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
+
+    if (!from) {
+      Serial.println("ERROR: onAdvertRecv: Contact not found!");
+    }
+
+    AdvertDataParser* parser = reportAdv(pkt, is_new);
+
     // Serial prints
-    if (debugPrint()) {
-      Serial.printf("ADVERT from -> %s\n", parser.getName());
-      Serial.printf("  lat:       %.6f\n", parser.getIntLat() / 1000000.0);
-      Serial.printf("  lon:       %.6f\n", parser.getIntLon() / 1000000.0);
+    if (parser && debugPrint()) {
+      Serial.printf("ADVERT from -> %s\n", parser->getName());
+      Serial.printf("  lat:       %.6f\n", parser->getIntLat() / 1000000.0);
+      Serial.printf("  lon:       %.6f\n", parser->getIntLon() / 1000000.0);
+    }
+
+    if (parser) {
+      delete parser;
     }
   }
 
@@ -1236,6 +1261,8 @@ public:
     auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
     if (pkt) {
       sendFlood(pkt, delay_millis);
+      AdvertDataParser* parser = reportAdv(pkt, false);
+        if (parser) delete parser;
     }
   }
 
@@ -1355,6 +1382,8 @@ public:
       auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
       if (pkt) {
         sendZeroHop(pkt);
+        AdvertDataParser* parser = reportAdv(pkt, false);
+        if (parser) delete parser;
         Serial.println("   (advert sent, zero hop).");
       } else {
         Serial.println("   ERR: unable to send");
@@ -1363,6 +1392,8 @@ public:
       auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
       if (pkt) {
         sendFlood(pkt);
+        AdvertDataParser* parser = reportAdv(pkt, false);
+        if (parser) delete parser;
         Serial.println("   (advert sent, flood).");
       } else {
         Serial.println("   ERR: unable to send");
