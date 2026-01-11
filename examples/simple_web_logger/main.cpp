@@ -2323,14 +2323,6 @@ void setupWebserver() {
   });
 
   // shows how to prevent a third WS client to connect
-  server.addHandler(&ws).addMiddleware([](AsyncWebServerRequest *request, ArMiddlewareNext next) {
-    if (ws.count() > 4) {
-      request->send(503, "text/plain", "Server is busy");
-    } else {
-      next();
-    }
-  });
-
   server.addHandler(&ws);
 
   server.begin();
