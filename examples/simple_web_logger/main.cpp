@@ -754,10 +754,24 @@ protected:
       setClock(sender_timestamp + 1, false);
     }
 
+    ContactsIterator iter;
+    ContactInfo c;
+    int contactId = -1;
+    int i = 0;
+
+    while (iter.hasNext(this, c)) {
+      if (memcmp(c.id.pub_key, from.id.pub_key, PUB_KEY_SIZE) == 0) {
+        contactId = i;
+        break;
+      }
+      i++;
+    }
+
     String msgData;
     JsonDocument doc2;
     doc2["type"] = "direct_message";
     doc2["data"] = doc;
+    doc2["data"]["cid"] = contactId;
     serializeJson(doc2, msgData);
     ws.printfAll(msgData.c_str());
   }
