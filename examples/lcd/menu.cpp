@@ -6,7 +6,6 @@ void GUI::draw(bool invalidate) {
 
     if (!page) {
         tft->fillScreen(MI_COLOR_BKG);
-        tft->setFreeFont(MI_FREE_FONT);
         tft->setTextColor(TFT_RED);
         tft->setCursor(0,8);
         tft->setTextWrap(true);
@@ -20,7 +19,6 @@ void GUI::draw(bool invalidate) {
 void Page::draw() {
     if (!gui || !gui->tft) return;
 
-    gui->tft->setFreeFont(MI_FREE_FONT);
     gui->tft->setTextColor(TFT_RED);
     gui->tft->setCursor(0,8);
     gui->tft->setTextWrap(true);
@@ -32,6 +30,10 @@ void Page::onInput(char c) {
     // ??
 }
 
+void Page::onInput(const char *c) {
+    // ??
+}
+
 void Menu::draw() {
     uint16_t y = 0;
     int pos = 0;
@@ -39,8 +41,8 @@ void Menu::draw() {
     title->draw(y, MI_COLOR_TITLE_BKG);
 
     int skip = 0;
-    if (selected > 10) {
-        skip = selected - 10;
+    if (selected > 7) {
+        skip = selected - 7;
         invalidate();
     }
 
@@ -105,19 +107,15 @@ void Boot::draw() {
         y+= h;
     }
 
-    gui->tft->setFreeFont(MI_FREE_FONT);
     gui->tft->setTextColor(TFT_WHITE);
-    gui->tft->setTextSize(3*MI_SCALE);
+    gui->tft->loadFont(Roboto_Light_18);
 
     // Bold text
     gui->tft->setCursor(10, 10);
     gui->tft->print("MeshKey GUI");
-    gui->tft->setCursor(10+1, 10+1);
-    gui->tft->print("MeshKey GUI");
 
     gui->tft->setTextColor(TFT_YELLOW);
-    gui->tft->setTextSize(1*MI_SCALE);
-    gui->tft->setCursor(10, 58);
+    gui->tft->setCursor(10, 30);
     gui->tft->print("MeshCore: v1.9.0, GUI: v0.1");
 }
 
@@ -150,7 +148,6 @@ void GUI::onInput(char c) {
             if(t9key >= 0 && t9key != ckey) t9commit();
 
             if (t9key >= 0) t9pos++;
-            if (t9pos >= strlen(t9Chars[ckey])) t9pos = 0;
 
             t9time = millis();
             t9key = ckey;
@@ -184,25 +181,23 @@ bool GUI::t9active() {
 void GUI::t9cancel() {
     bool active = t9active();
     t9time = 0;
-    t9pos = 0;
+    t9pos = -1;
     t9key = -1;
 
     t9time = 0;
-    t9pos = 0;
+    t9pos = -1;
     t9key = -1;
 
     // TODO: draw on bottom
     if (active) {
         uint16_t w = tft->width();
         uint16_t h = tft->height();
-        tft->setTextSize(2*MI_SCALE);
         uint16_t th = tft->fontHeight();
         uint16_t p = 4; // text padding
         uint16_t d = th + p + p; // box size
         uint16_t x = (w - d) / 2;
         uint16_t y = (h - d) / 2;
         tft->fillRect(x,y,d,d, MI_COLOR_BKG);
-        tft->setTextSize(1*MI_SCALE);
 
         if (page) page->invalidate();
         draw();
@@ -211,7 +206,12 @@ void GUI::t9cancel() {
 
 void GUI::t9commit() {
     t9mode = false;
-    onInput(t9Chars[t9key][t9pos]);
+    if (t9key != -1 && t9pos != -1) {
+        const char* keypadStr = getKeypadChar();
+        t9key = -1;
+        t9pos = -1;
+        if (page) { page->onInput(keypadStr); }
+    }
     t9mode = true;
     t9cancel();
 }
@@ -230,10 +230,7 @@ void GUI::loop()  {
             uint16_t w = tft->width();
             uint16_t h = tft->height();
 
-            tft->setFreeFont(MI_FREE_FONT);
-            tft->setTextSize(2*MI_SCALE);
             uint16_t th = tft->fontHeight();
-            tft->setTextSize(1*MI_SCALE);
 
             uint16_t p = 4; // text padding
             uint16_t d = th + p + p; // box size
@@ -242,15 +239,14 @@ void GUI::loop()  {
             uint16_t y = (h - d) / 2;
 
             TFT_eSprite row = TFT_eSprite(tft);
+            row.loadFont(Roboto_Light_18);
             row.createSprite(d, d);
-            row.setFreeFont(MI_FREE_FONT);
-            row.setTextSize(2*MI_SCALE);
             row.setTextColor(MI_COLOR_T9_FONT);
             row.fillRect(0, 0, d, d, MI_COLOR_T9_BKG);
-            uint16_t fw = row.textWidth(String(getT9char()));
+            uint16_t fw = row.textWidth(String(getKeypadChar()));
 
             row.setCursor((d - fw) / 2,  + p);
-            row.print(getT9char());
+            row.print(getKeypadChar());
             row.pushSprite(x, y);
 
             lastkey = t9key;
@@ -283,18 +279,3 @@ String MIPage::getValueString() {
     }
     return "";
 }
-
-const char* const GUI::t9Chars[12] = {
-    " 0",
-    ".,!?1",
-    "a\213bc\214A\200BC\2012",
-    "de\215fDE\202F3",
-    "g\216hi\217G\203HI\2044",
-    "jk\220l\221JK\205L\2065",
-    "mn\222oMN\208O6",
-    "pqrs\223PQRS\2107",
-    "tu\224vTU\211V8",
-    "wxyz\225WXYZ\2129",
-    " +-_@#$%^&*()",
-    " []{}:;<>\226"
-};

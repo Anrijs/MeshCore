@@ -27,7 +27,7 @@
 #include <Packet.h>
 #include <helpers/ChannelDetails.h>
 #include <helpers/ContactInfo.h>
-#include "font.h"
+#include "roboto.h"
 
 #define LIGHT_MODE
 
@@ -36,6 +36,9 @@
     #define MI_COLOR_BKG  TFT_WHITE
     #define MI_COLOR_SELECTED_BKG TFT_ORANGE
     #define MI_COLOR_TEXT TFT_BLACK
+    #define MI_COLOR_SENDER_TEXT TFT_WHITE
+    #define MI_COLOR_SENDER_BKG TFT_ORANGE
+    #define MI_COLOR_SENDER_BKG_ALT 0x35bf
     #define MI_COLOR_VALUE TFT_DARKGREY
     #define MI_COLOR_INVALID_VALUE TFT_RED
     #define MI_COLOR_SEPARATOR TFT_LIGHTGREY
@@ -44,12 +47,14 @@
 
     #define MI_COLOR_BKG_ALT 0xE73C
     #define MI_COLOR_BKG_SEL 0xDF7F
-    #define MI_COLOR_BKG_SEL_ALT 0xBF1F
 #else
     #define MI_COLOR_TITLE_BKG TFT_DARKGREY
     #define MI_COLOR_BKG  TFT_BLACK
     #define MI_COLOR_SELECTED_BKG TFT_DARKCYAN
     #define MI_COLOR_TEXT TFT_WHITE
+    #define MI_COLOR_SENDER_TEXT TFT_WHITE
+    #define MI_COLOR_SENDER_BKG TFT_ORANGE
+    #define MI_COLOR_SENDER_BKG_ALT 0x35bf
     #define MI_COLOR_VALUE TFT_CYAN
     #define MI_COLOR_INVALID_VALUE TFT_RED
     #define MI_COLOR_SEPARATOR TFT_DARKGREY
@@ -58,15 +63,12 @@
 
     #define MI_COLOR_BKG_ALT 0x18C3
     #define MI_COLOR_BKG_SEL 0x4100
-    #define MI_COLOR_BKG_SEL_ALT 0x4200
 #endif
 
-#define MI_SCALE 1
 #define MI_FONT 2
-#define MI_FREE_FONT &LatvFont
-#define MI_FONT_HEIGHT (chr_hgt_f16 * MI_SCALE)   // font height
-#define MI_FONT_PADDING (2 * MI_SCALE)  // px padding each side
-#define MI_VALUE_WIDTH  (40 * MI_SCALE) // px padding each side
+#define MI_FONT_HEIGHT (18)   // font height
+#define MI_FONT_PADDING (2)  // px padding each side
+#define MI_VALUE_WIDTH  (40) // px padding each side
 
 // TODO: add channel/user ref
 struct message {
@@ -106,6 +108,35 @@ class Page;
 class MI;
 class Channel;
 
+const std::vector<std::vector<const char*>> keypadChars = {
+    {" ", "0"},
+    {".", ",", "!", "?", "1"},
+    {"a", "ā", "b", "c", "č", "A", "Ā", "B", "C", "Č", "2"},
+    {"d", "e", "ē", "f", "D", "E", "Ē", "F", "3"},
+    {"g", "ģ", "h", "i", "ī", "G", "Ģ", "H", "I", "Ī", "4"},
+    {"j", "k", "ķ", "l", "ļ", "J", "K", "Ķ", "L", "Ļ", "5"},
+    {"m", "n", "ņ", "o", "M", "N", "Ņ", "O", "6"},
+    {"p", "q", "r", "s", "š", "P", "Q", "R", "S", "Š", "7"},
+    {"t", "u", "ū", "v", "T", "U", "Ū", "V", "8"},
+    {"w", "x", "y", "z", "ž", "W", "X", "Y", "Z", "Ž", "9"},
+    {" ", "+", "-", "_", "@", "#", "$", "%", "^", "&", "*", "/", "\\"},
+    {" ", "(", ")", "[", "]", "{", "}", ":", ";", "<", ">"}
+};
+
+//     " 0",
+//     ".,!?1",
+//     "aābcčAĀBCČ2",
+//     "deēfDEĒF3",
+//     "gģhiīGĢHIĪ4",
+//     "jkķlļJKĶLĻ5",
+//     "mnņoMNŅO6",
+//     "pqrsšPQRSŠ7",
+//     "tuūvTUŪV8",
+//     "wxyzžWXYZŽ9",
+//     " +-_@#$%^&*/\\",
+//     " ()[]{}:;<>"
+// };
+
 class GUI {
     struct {
         Page* stack[16]; // TODO: this should be costant
@@ -114,29 +145,33 @@ class GUI {
 
     const long t9timeout = 750;
 
-    static const char* const t9Chars[12];
-
     bool    t9mode = true; // work in progress.
     long    t9time = 0; // when char will be commited. 0 = not active
-    int8_t  t9key  = -1;
-    uint8_t t9pos  = 0;
+    uint8_t t9key  = -1;
+    uint8_t t9pos  = -1;
     uint8_t t9lastpos = 0;
 
     bool lcdOn = true;
     long lcdOff = 0;
 
     int brightness = 32;
+
+    
+
+    const char* getKeypadChar() {
+        Serial.printf("Get char: [%d,%d]\n", t9key, t9pos);
+        if (t9key > keypadChars.size()) { return ""; };
+
+        t9pos = t9pos % keypadChars[t9key].size();
+
+        Serial.printf("Get char: [%s]\n", keypadChars[t9key][t9pos]);
+        return keypadChars[t9key][t9pos];
+    }
     
     bool isT9Sequence() {
         return t9time > 0 && millis() >= (t9time + t9timeout);
     }
 
-    char getT9char() {
-        if (t9key >= 0) {
-            return t9Chars[t9key][t9pos];
-        }
-        return ' ';
-    }
 public:
     TFT_eSPI* tft;
     Page* page = nullptr;
@@ -254,8 +289,7 @@ public:
         
         TFT_eSprite row = TFT_eSprite(gui->tft);
         row.createSprite(w, h);
-        row.setFreeFont(MI_FREE_FONT);
-        //row.setTextSize(1*MI_SCALE);
+        row.loadFont(Roboto_Light_18);
         row.setTextWrap(false);
         row.setCursor(MI_FONT_PADDING, 0);
         row.setTextColor(MI_COLOR_TEXT);
@@ -280,8 +314,6 @@ public:
         if (!spr) return;
 
         String str = getValueString();       
-        spr->setFreeFont(MI_FREE_FONT);
-        spr->setTextSize(1 * MI_SCALE);
 
         uint16_t tw = spr->textWidth(str);
         uint16_t th = spr->fontHeight();
@@ -537,6 +569,7 @@ public:
     Page(GUI* gui, PageType type): GUIElement(gui), type(type) { }
     virtual void draw();
     virtual void onInput(char c);
+    virtual void onInput(const char *c);
     virtual bool onPop() { return true; };
     const PageType getType() { return type; }
 };
@@ -623,11 +656,9 @@ public:
     Channel(GUI* gui, ContactInfo* ci): Page(gui, PAGE_TYPE_CHANNEL) {
         this->ci = ci;
     }
-    int stripes[4] = {
+    int stripes[2] = {
         MI_COLOR_BKG,
-        MI_COLOR_BKG_ALT,
-        MI_COLOR_BKG_SEL,
-        MI_COLOR_BKG_SEL_ALT
+        MI_COLOR_BKG_ALT
     };
 
     void draw() override {
@@ -635,54 +666,81 @@ public:
         if (redraw) {
             int16_t y = 0;
             drawInput(y);
+            String sender;
+            String mesg;
+            char clock[16];
 
             long start = millis();
             if (gui->messages->size() != lastsize) {
                 // TODO: size may be truncated 
-                gui->tft->setTextSize(1*MI_SCALE);
                 gui->tft->setTextWrap(true);
                 lastsize = gui->messages->size();
                 uint16_t ih = gui->tft->fontHeight();
                 read = 0;
                 for (int i = lastsize - 1; i >= 0; i--) {
                     message& m = gui->messages->at(i);
+                    m.read = true;
+
                     if (this->ch && this->ch != m.ch) continue;
                     if (this->ci && this->ci != m.ci) continue;
                     m.read = true;
-                    
-                    int16_t textw = gui->tft->textWidth(m.msg);
+
+                    if (m.me) {
+                        mesg = m.msg;
+                        sprintf(clock, "%02d:%02d [%d]", m.hh, m.mm, m.repeats);
+                        sender = clock;
+                    } else {
+                        int splitPos = m.msg.indexOf(":");
+                        sender = "";
+                        for (int j=0;j<splitPos;j++) {
+                            if (m.msg.charAt(j) < 128) {
+                                sender += m.msg.charAt(j);
+                            }
+                        }
+                        mesg = m.msg.substring(splitPos + 2);
+                        sprintf(clock, "[%02d:%02d] ", m.hh, m.mm);
+                        sender = clock + sender;
+                    }
+
+                    int16_t textw = gui->tft->textWidth(mesg) + MI_FONT_PADDING;
                     gui->tft->setTextFont(1);
-                    gui->tft->setTextSize(1);
-                    textw += gui->tft->textWidth("00:00") + MI_FONT_PADDING;
 
                     int16_t lines = (textw / gui->tft->width()) + 1;
+                    for (int j = 0; j < mesg.length(); j++) {
+                        if (mesg[j] == '\n') lines++;
+                    }
+
+                    gui->tft->unloadFont();
                     int16_t texth = (lines * MI_FONT_HEIGHT);
+                    int16_t ln1h = gui->tft->fontHeight(1) + MI_FONT_PADDING + MI_FONT_PADDING;
+                    texth += ln1h;
 
                     y -= texth + MI_FONT_PADDING;
                     uint16_t color = read % 2;
-                    if (m.me) color += 2;
 
                     TFT_eSprite row = TFT_eSprite(gui->tft);
-                    row.createSprite(gui->tft->width(), texth + MI_FONT_PADDING);
+                    row.createSprite(gui->tft->width() - 2, texth + MI_FONT_PADDING);
                     row.setTextWrap(true);
                     row.setTextColor(MI_COLOR_TEXT);
                     row.fillRect(0, 0, gui->tft->width(), texth + MI_FONT_PADDING, stripes[color]);
-                    row.setCursor(MI_FONT_PADDING, 0);
+                    row.setCursor(MI_FONT_PADDING, 1);
 
-                    // print clock
+                    // print clock, sender, repeats
+                    row.setTextColor(MI_COLOR_SENDER_TEXT, m.me ? MI_COLOR_SENDER_BKG_ALT : MI_COLOR_SENDER_BKG);
                     row.setTextFont(1);
-                    row.setTextSize(1);
-                    row.printf("%02d:%02d", m.hh, m.mm);
-                    uint16_t fx = row.getCursorX() + MI_FONT_PADDING;
-                    row.setCursor(MI_FONT_PADDING, 8);
-                    row.printf("[%d]", m.repeats);
+
+                    row.drawRect(0, 0, row.textWidth(sender) + 2, row.fontHeight() + 2, m.me ? MI_COLOR_SENDER_BKG_ALT : MI_COLOR_SENDER_BKG);
+                    row.setCursor(1, 1);
+                    row.print(sender);
 
                     // print message
-                    row.setCursor(fx, 0);
-                    row.setFreeFont(MI_FREE_FONT);
-                    row.setTextSize(1*MI_SCALE);
-                    row.print(m.msg);
-                    row.pushSprite(0, y);
+                    row.loadFont(Roboto_Light_18);
+                    row.setTextColor(MI_COLOR_TEXT);
+                    row.setCursor(0, ln1h);
+                    row.print(mesg);
+                    row.pushSprite(1, y);
+                    gui->tft->loadFont(Roboto_Light_18);
+
 
                     read++;
 
@@ -715,9 +773,8 @@ public:
         y = h - ih;
 
         TFT_eSprite row = TFT_eSprite(gui->tft);
+        row.loadFont(Roboto_Light_18);
         row.createSprite(gui->tft->width(), ih);
-        row.setFreeFont(MI_FREE_FONT);
-        row.setTextSize(1*MI_SCALE);
         row.setTextWrap(false);
         row.setTextColor(MI_COLOR_TEXT);
         row.drawLine(0, 0, w, 0, MI_COLOR_SEPARATOR);
@@ -732,6 +789,8 @@ public:
         if (c == 0x0A) {
             // send
             if (pos < 1) return;
+            
+            Serial.printf("onInput commit msg: %s\n", buffer);
             
             if (this->ch) {
                 this->gui->outmessages->push_back(message(this->ch, buffer, 0, 0, true));
@@ -753,6 +812,17 @@ public:
             invalidate();
         }
     };
+
+    void onInput(const char* str) {
+        int len = strlen(str);
+        size_t pos = strlen(buffer);
+
+        for (int i=0;i<len;i++) {
+            if (pos < bufsize) buffer[pos++] = str[i];
+        }
+        if (pos < bufsize) buffer[pos++] = 0;
+        invalidate();
+    }
 
     int getRead() const { return read; }
 

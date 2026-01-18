@@ -49,10 +49,13 @@ public:
     packet->calculatePacketHash(hash);
 
     // find message in gui and increment repeats
+    
     for (message &m : *gui->messages) {
       if (memcmp(hash, m.hash, MAX_HASH_SIZE) == 0) { 
           m.repeats++;
+          gui->page->onPop(); // will reset msg size in channels
           gui->page->invalidate(); // todo: should only invalidate channe page
+          gui->page->draw();
           break;
       }
     }
