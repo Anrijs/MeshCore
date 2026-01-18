@@ -31,6 +31,8 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   uint8_t tmp_buf[256];
   char hex_buf[512];
   GUI* gui;
+
+  bool advClockSync = false;
   
   const char* getTypeName(uint8_t type) const {
     if (type == ADV_TYPE_CHAT) return "Chat";
@@ -41,7 +43,7 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
 
   void loadContacts();
   void saveContacts();
-  void setClock(uint32_t timestamp);
+  void setClock(uint32_t timestamp, bool force);
 protected:
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
@@ -78,7 +80,7 @@ protected:
   void onSendTimeout() override {};
 
 public:
-  const int32_t gmtOffset = 10800; // TODO: make configurable
+  const int32_t gmtOffset = 3600 * 2; // TODO: make configurable
 
   NodePrefs _prefs;
   ChannelDetails* _public;
@@ -96,7 +98,7 @@ public:
   void begin(FILESYSTEM& fs);
   void savePrefs();
 
-  void sendSelfAdvert(int delay_millis);
+  void sendSelfAdvert(int delay_millis, bool flood);
   void onContactVisit(const ContactInfo& contact) override;
 
   void loop() { BaseChatMesh::loop(); }

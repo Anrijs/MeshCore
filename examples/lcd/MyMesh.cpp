@@ -124,24 +124,46 @@ void MyMesh::saveContacts() {
   file.close();
 }
 
-void MyMesh::setClock(uint32_t timestamp) {
+void MyMesh::setClock(uint32_t timestamp, bool force) {
   uint32_t curr = getRTCClock()->getCurrentTime();
-  if (timestamp > curr) {
-    getRTCClock()->setCurrentTime(timestamp);
-    DateTime dt(timestamp + gmtOffset);
-    Serial.printf("   (OK - clock set! %02d:%02d:%02d)\n",
+  DateTime dt(timestamp + gmtOffset);
+  Serial.printf("   Set clock: %4d-%02d-%02d %02d:%02d:%02d\n",
+      dt.year(),
+      dt.month(),
+      dt.day(),
       dt.hour(),
       dt.minute(),
       dt.second()
-    );
+  );
+
+  if (timestamp > curr || force) {
+    getRTCClock()->setCurrentTime(timestamp);
+    Serial.println("   (OK - clock set!)");
   } else {
-    Serial.println("   (ERR: clock cannot go backwards)");
+    DateTime now(getRTCClock()->getCurrentTime() + gmtOffset);
+
+    Serial.printf("   (ERR: clock cannot go backwards. Current: %4d-%02d-%02d %02d:%02d:%02d)\n",
+      now.year(),
+      now.month(),
+      now.day(),
+      now.hour(),
+      now.minute(),
+      now.second()
+    );
   }
 }
 
 void MyMesh::onAdvertRecv(mesh::Packet* pkt, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) {
   BaseChatMesh::onAdvertRecv(pkt, id, timestamp, app_data, app_data_len);  // chain to super impl
-  setClock(timestamp + 1);
+  uint32_t curr = getRTCClock()->getCurrentTime();
+  if (!advClockSync) {
+    // find contact
+    ContactInfo* ci = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
+    if (ci && ci->type == ADV_TYPE_CHAT) {
+      setClock(timestamp + 1, false);
+      advClockSync = true;
+    }
+  }
 }
 
 void MyMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) {
@@ -175,7 +197,7 @@ void MyMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t 
   Serial.printf("   %s\n", text);
 
   if (strcmp(text, "clock sync") == 0) {  // special text command
-    setClock(sender_timestamp + 1);
+    setClock(sender_timestamp + 1, true);
   }
 
   ContactInfo* ci = lookupContactByPubKey(from.id.pub_key, PUB_KEY_SIZE);
@@ -196,6 +218,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packe
     Serial.printf("PUBLIC CHANNEL MSG -> (Flood) hops %d\n", pkt->path_len);
   }
 
+  if (strcmp(text, "clock sync") == 0) {  // special text command
+    setClock(timestamp + 1, true);
+  }
+
   uint32_t ack;
   memcpy(&ack, pkt->payload, 4);
 
@@ -214,10 +240,14 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packe
   }
 }
 
-void MyMesh::sendSelfAdvert(int delay_millis) {
+void MyMesh::sendSelfAdvert(int delay_millis, bool flood) {
   auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
   if (pkt) {
-    sendFlood(pkt, delay_millis);
+    if (flood) {
+      sendFlood(pkt, delay_millis);
+    } else {
+      sendZeroHop(pkt, delay_millis);
+    }
   }
 }
 
