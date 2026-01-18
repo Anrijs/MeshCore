@@ -80,7 +80,10 @@ struct {
 
 
 void halt() {
-  while (1) ;
+  while (1) {
+    Serial.println("HALTED.");
+    delay(5000);
+  }
 }
 
 bool miActionFlood(MIAction* action) {
@@ -348,6 +351,7 @@ void loop() {
     
     if (pkt) {
       m.setHash(pkt);
+      m.repeats--; // reduce seen by sending
       gui.messages->push_back(m);
       the_mesh.sendFlood(pkt);
       Serial.println("   Sent.");
