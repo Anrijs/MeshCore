@@ -38,6 +38,7 @@ struct {
     MIPage* channels;
     MIPage* settings;
     MIAction* flood;
+    MIAction* advert;
     MIString* nf;
     MIString* batt;
     MIString* uptime;
@@ -83,7 +84,12 @@ void halt() {
 }
 
 bool miActionFlood(MIAction* action) {
-  the_mesh.sendSelfAdvert(100);
+  the_mesh.sendSelfAdvert(100, true);
+  return true;
+}
+
+bool miActionAdvert(MIAction* action) {
+  the_mesh.sendSelfAdvert(100, false);
   return true;
 }
 
@@ -119,6 +125,15 @@ bool miActionBrightnessM(MIAction* action) {
   return true;
 }
 
+bool miActionRotate(MIAction* action) {
+  static bool horizontal = true;
+  horizontal = !horizontal;
+  tft.setRotation(horizontal ? 3 : 0);
+  gui.page->invalidate();
+  gui.draw();
+  return true;
+}
+
 void setupMenu() {
   /** Home **/
   menu.home.channels = new MIPage(&gui, "Channels", menu.channels.m);
@@ -129,15 +144,20 @@ void setupMenu() {
   menu.home.uptime = new MIString(&gui, "Uptime", uptimestr, 15);
 
 
-  menu.home.flood = new MIAction(&gui, "Flood", &miActionFlood);
+  menu.home.flood = new MIAction(&gui, "Adv. Flood", &miActionFlood);
+  menu.home.advert = new MIAction(&gui, "Adv. Direct", &miActionAdvert);
   menu.home.m->add(menu.home.channels);
   menu.home.m->add(menu.home.contacts);
   menu.home.m->add(menu.home.settings);
   menu.home.m->add(menu.home.flood);
+  menu.home.m->add(menu.home.advert);
   menu.home.m->add(menu.home.nf);
   menu.home.m->add(menu.home.batt);
   menu.home.m->add(menu.home.uptime);
 
+  // dev
+  MIAction* rot = new MIAction(&gui, "Rotate", &miActionRotate);
+  menu.home.m->add(rot);
 
   // dev stuff
   Keeb* devkeeb = new Keeb(&gui);
@@ -192,23 +212,24 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(9600);
 
-  gui.setBrightness(0);
-  board.begin();
-  setupMenu();
-
-  Boot* hello = new Boot(&gui);
-  gui.page = hello;
-  if (!radio_init()) { halt(); }
+  delay(100);
 
   tft.init();
   tft.setRotation(3);
   tft.setAttribute(UTF8_SWITCH, 0);
-  tft.setFreeFont(MI_FREE_FONT);
+
+  delay(100);
+
+  Boot* hello = new Boot(&gui);
+  gui.page = hello;
 
   gui.draw();
   gui.setBrightness(16);
 
-  delay(100);
+  board.begin();
+  setupMenu();
+
+  if (!radio_init()) { halt(); }
 
   fast_rng.begin(radio_get_rng_seed());
 
