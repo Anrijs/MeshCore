@@ -16,6 +16,8 @@
 #include "MeshTables.h"
 #include <helpers/BaseChatMesh.h>
 
+#include "secret.h"
+
 std::vector<message> messages;
 std::vector<message> outmessages;
 
@@ -245,6 +247,7 @@ void setup() {
   MIPage* mipub = new MIPage(&gui, "Public", pub);
   menu.channels.m->add(mipub);
 
+  addSecrets(&the_mesh, &gui, menu.channels.m);
 
   radio_set_params(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
   radio_set_tx_power(the_mesh.getTxPowerPref());
