@@ -327,11 +327,10 @@ void loop() {
     memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
     temp[4] = 0;  // attempt and flags
 
-    String utf8str = ascii2utf(m.msg);
     if (m.ch) {
-      sprintf((char *) &temp[5], "%s: %s", the_mesh._prefs.node_name, utf8str.c_str());  // <sender>: <msg>
+      sprintf((char *) &temp[5], "%s: %s", the_mesh._prefs.node_name, m.msg.c_str());  // <sender>: <msg>
     } else {
-      sprintf((char *) &temp[5], "%s", utf8str.c_str());  // <sender>: <msg>
+      sprintf((char *) &temp[5], "%s", m.msg.c_str());  // <sender>: <msg>
     }
     temp[5 + MAX_TEXT_LEN] = 0;  // truncate if too long
 
