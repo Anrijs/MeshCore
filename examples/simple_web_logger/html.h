@@ -394,12 +394,12 @@ function loadTelemetry(data) {
         input.value = value;
         input.changed = false;
         input.oninput = (e) => {
-            input.dataset.changed = true;
-            input.dataset.invalid = false;
+            input.dataset.changed = 1;
+            input.dataset.invalid = 0;
             if (validate) {
                 if (!validate(e.target.value)) {
-                    input.changed = false;
-                    input.dataset.invalid = true;
+                    input.changed = 0;
+                    input.dataset.invalid = 1;
                 }
             }
         }
