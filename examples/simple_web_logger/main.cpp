@@ -34,7 +34,7 @@
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
-#define FIRMWARE_VER_TEXT   "v1.8.1"
+#define FIRMWARE_VER_TEXT   "v1.11.0 (build time: " __DATE__ " " __TIME__ ")"
 
 #ifndef LORA_FREQ
   #define LORA_FREQ   915.0
@@ -917,9 +917,6 @@ protected:
     String cmd = parts[0];
     String data = "";
 
-    // WARNING: BOT_RESPOND_ALL should be defined only for one logger in network
-    // to avoid multiple logger responses
-
     bool hasRecipient = false;
     bool reply = false;
 
@@ -938,6 +935,11 @@ protected:
       reply = npos != -1;
       data = data.substring(npos + llen); // remove recipient name
     }
+
+    Serial.print("Bot Command:\n");
+    Serial.printf("  reply:        %u\n", reply);
+    Serial.printf("  hasRecipient: %u\n", hasRecipient);
+    Serial.printf("  cmd:          %s\n", cmd.c_str());
 
     if (!reply) return;
 
