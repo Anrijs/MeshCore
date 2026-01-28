@@ -745,6 +745,28 @@ protected:
     return NULL;
   }
 
+  mesh::Packet* composeMsgPacket2(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char *text, uint32_t& expected_ack) {
+    int text_len = strlen(text);
+    if (text_len > MAX_TEXT_LEN) return NULL;
+    if (attempt > 3 && text_len > MAX_TEXT_LEN-2) return NULL;
+
+    uint8_t temp[5+MAX_TEXT_LEN+1];
+    memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
+    temp[4] = (attempt & 3);
+    memcpy(&temp[5], text, text_len + 1);
+
+    // calc expected ACK reply
+    mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + text_len, self_id.pub_key, PUB_KEY_SIZE);
+
+    int len = 5 + text_len;
+    if (attempt > 3) {
+      temp[len++] = 0;  // null terminator
+      temp[len++] = attempt;  // hide attempt number at tail end of payload
+    }
+
+    return createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id, recipient.shared_secret, temp, len);
+  }
+
   void onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) override {
     uint8_t hash[MAX_HASH_SIZE];
     pkt->calculatePacketHash(hash);
@@ -871,6 +893,101 @@ protected:
     serializeJson(doc2, msgData);
     addHistory(msgData);
     ws.printfAll(msgData.c_str());
+
+    // Slash commands
+    // Dont run in public
+    if (channel.hash[0] == 0x11) return;
+
+    int start = 0;
+    int inlen = strlen(text);
+    for (int i=0;i<inlen-3;i++) {
+      if (text[i] == ':' && text[i+2] == '/') {
+        start = i + 2;
+        Serial.printf("Start at %u -> %c\n", start, text[start]);
+        break;
+      }
+    }
+
+    if (start <= 0) return;
+
+    String rep = "";
+    std::vector<String> parts = split(&text[start], 2); // 0 - cmd, 1 - to/data
+    if (parts.size() < 1) return;
+
+    String cmd = parts[0];
+    String data = "";
+
+    // WARNING: BOT_RESPOND_ALL should be defined only for one logger in network
+    // to avoid multiple logger responses
+
+    bool hasRecipient = false;
+    bool reply = false;
+
+    if (parts.size() >= 2) {
+      data = parts[1];
+      int npos = data.indexOf("@[");
+      hasRecipient = npos != -1;
+    }
+
+    if (hasRecipient) {
+      char lookup[40];
+      int llen = sprintf(lookup, "@[%s]", getNodePrefs()->node_name);
+      if (llen < 4) return; // sprintf failed or bad name
+
+      int npos = data.indexOf(lookup);
+      reply = npos != -1;
+      data = data.substring(npos + llen); // remove recipient name
+    }
+
+    if (!reply) return;
+
+    if (cmd == "/echo") {
+      data.trim();
+      if (data.length() > 0) {
+        rep = "Echo: ";
+        rep += data;
+      } else {
+        rep = "Echo.";
+      }
+    } else if (cmd == "/ping") {
+      rep = "Pong! ";
+      if (pkt->path_len == 0) {
+        rep += "0 hops";
+      } else {
+        char buf[3];
+        rep += pkt->path_len;
+        rep += " hop";
+        if (pkt->path_len != 1) rep += "s";
+        rep += ": ";
+        for (int i=0;i<pkt->path_len;i++) {
+          sprintf(buf, "%02X", pkt->path[i]);
+          if (i > 0) rep += ',';
+          rep += buf;
+        }
+      }
+    } else {
+      return; // unknown command
+    }
+
+    if (rep.length() > 0) {
+      Serial.print("CMD Reply: ");
+      Serial.println(rep);
+      uint8_t temp[5+MAX_TEXT_LEN+32];
+      uint32_t otimestamp = getRTCClock()->getCurrentTime();
+      memcpy(temp, &otimestamp, 4);
+      temp[4] = 0;
+      int len = sprintf((char *) &temp[5], "%s: %s", _prefs.node_name, rep.c_str());
+
+      if (len > 0) {
+        Serial.println("len OK");
+        len += 5; //timestamp + flags
+        mesh::Packet* opkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, len);
+        if (opkt != NULL) {
+          Serial.println("pkt OK");
+          sendFlood(opkt, 2000);
+        }
+      }
+    }
   }
 
   uint8_t onContactRequest(const ContactInfo& contact, uint32_t sender_timestamp, const uint8_t* data, uint8_t len, uint8_t* reply) override {
