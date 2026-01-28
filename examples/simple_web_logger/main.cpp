@@ -34,7 +34,10 @@
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
-#define FIRMWARE_VER_TEXT   "v1.11.0 (build time: " __DATE__ " " __TIME__ ")"
+#define FIRMWARE_VER_TEXT "v1.11.0"
+#define LOGGER_VER_TEXT "v1.1"
+#define BUILD_DATE __DATE__ " " __TIME__
+#define FULL_VER_TEXT "fw: " FIRMWARE_VER_TEXT ", logger: " LOGGER_VER_TEXT ", build-time: " BUILD_DATE
 
 #ifndef LORA_FREQ
   #define LORA_FREQ   915.0
@@ -1621,7 +1624,9 @@ public:
         Serial.printf("  ERROR: unknown config: %s\n", config);
       }
     } else if (memcmp(command, "ver", 3) == 0) {
-      Serial.println(FIRMWARE_VER_TEXT);
+      Serial.println("logger:   " LOGGER_VER_TEXT);
+      Serial.println("meshcore: " FIRMWARE_VER_TEXT);
+      Serial.println("date:     " BUILD_DATE);
     } else if (memcmp(command, "wifi ", 5) == 0) {
       const char* config = &command[5];
       if (memcmp(config, "ssid ", 5) == 0) {
@@ -2176,6 +2181,9 @@ void WiFiTaskCode(void * pvParameters) {
         doc["sys"]["heap_free"] = ESP.getFreeHeap();
         doc["sys"]["rssi"] = WiFi.RSSI();
         doc["sys"]["uptime"] = millis();
+        doc["sys"]["version"]["logger"] = LOGGER_VER_TEXT;
+        doc["sys"]["version"]["meshcore"] = FIRMWARE_VER_TEXT;
+        doc["sys"]["version"]["date"] = BUILD_DATE;
         doc["contact"]["new"] = false;
         doc["contact"]["type"] = ADV_TYPE_CHAT;
         doc["contact"]["flags"] = 0;
