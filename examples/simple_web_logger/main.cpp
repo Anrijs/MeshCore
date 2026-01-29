@@ -18,7 +18,9 @@
 
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#ifndef DISABLE_WIFI_OTA
 #include <AsyncElegantOTA.h>
+#endif
 
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/StaticPoolPacketManager.h>
@@ -1742,6 +1744,9 @@ public:
       Serial.println("Rebooting...");
       ESP.restart();
     } else if (memcmp(command, "start ota", 9) == 0) {
+#ifdef DISABLE_WIFI_OTA
+      Serial.println("OTA not supported");
+#else
       char id[160];
       sprintf(id, "MeshCore Logger (%s %s)", __DATE__, __TIME__);
       AsyncWebServer* server = new AsyncWebServer(80);
@@ -1751,6 +1756,7 @@ public:
       Serial.print("  Go to http://");
       Serial.print(WiFi.localIP());
       Serial.println("/update");
+#endif
     } else if (memcmp(command, "tel ", 4) == 0) {
       const char* action = &command[4];
       if (memcmp(action, "ls", 2) == 0) {
@@ -2075,7 +2081,9 @@ public:
       Serial.println("   wifi {ssid|password} {value}");
       Serial.println("   log {url|auth|report|raw} {value}");
       Serial.println("   channel {add|ls} {value}");
+#ifndef DISABLE_WIFI_OTA
       Serial.println("   start ota");
+#endif
       Serial.println();
       Serial.println(" - Telemetry:");
       Serial.println("   tel ls");
