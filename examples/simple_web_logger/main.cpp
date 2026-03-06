@@ -1432,7 +1432,7 @@ public:
       int len = strlen((char *) &temp[5]);
       auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + len);
       if (pkt) {
-        sendFlood(pkt, 0, _prefs.hash_mode + 1);
+        sendFlood(pkt, (uint32_t) 0, _prefs.hash_mode + 1);
 
         _tables->hasSeen2(pkt);
 
@@ -1532,7 +1532,7 @@ public:
     } else if (strcmp(command, "flood") == 0) {
       auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
       if (pkt) {
-        sendFlood(pkt);
+        sendFlood(pkt, (uint32_t) 0, _prefs.hash_mode + 1);
         AdvertDataParser* parser = reportAdv(pkt, false);
         if (parser) delete parser;
         Serial.println("   (advert sent, flood).");
