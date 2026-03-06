@@ -92,6 +92,7 @@ void WiFiTaskCode(void* pvParameters);
 void setupWebserver();
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
+static bool dbg = false;
 
 void task_sleep(uint32_t ms) {
   vTaskDelay(ms / portTICK_PERIOD_MS);
@@ -1119,7 +1120,7 @@ protected:
     if (curr_telemetry && pending_telemetry_retries >= _telemetry.retries) {
       if (pending_telemetry_next < millis()) {
         curr_telemetry_rule->loggedin = false; // unset logged in flag.
-        Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
+        if (dbg) Serial.printf("Telemetry to %s timed out\n", curr_telemetry->name);
 
         String msgData;
         JsonDocument doc2;
@@ -1150,7 +1151,7 @@ protected:
         telemetry_eta = millis();
         uint32_t est_timeout;
         int result = sendLogin(*curr_telemetry, curr_telemetry_rule->password, est_timeout);
-        Serial.printf("Telemetry login %s, result=%u, to=%u | %u/%u\n",
+        if (dbg) Serial.printf("Telemetry login %s, result=%u, to=%u | %u/%u\n",
           curr_telemetry->name,
           result,
           est_timeout,
@@ -1167,7 +1168,7 @@ protected:
         delay(1000);
         uint32_t tag, est_timeout;
         int result = sendRequest(*curr_telemetry, REQ_TYPE_GET_TELEMETRY_DATA, tag, est_timeout);
-        Serial.printf("Telemetry read %s, tag=%08X, result=%um to=%u | %u/%u\n",
+        if (dbg) Serial.printf("Telemetry read %s, tag=%08X, result=%um to=%u | %u/%u\n",
           curr_telemetry->name,
           tag,
           result,
@@ -1203,7 +1204,7 @@ protected:
           }
         } else if (rule->next < now) {
           rule->next = now + rule->interval;
-          Serial.printf("Schedule %u\n", pos);
+          if (dbg) Serial.printf("Schedule %u\n", pos);
           telemetryRun(pos);
           break;
         }
@@ -2075,6 +2076,10 @@ public:
           }
         }
       }
+    }  else if (memcmp(command, "dbg", 3) == 0) {
+      dbg = !dbg;
+      Serial.print("  Debug ");
+      Serial.println(dbg ? "ON" : "OFF");
     } else if (memcmp(command, "help", 4) == 0) {
       Serial.println("Commands:");
       Serial.println("   set {name|lat|lon|freq|tx|af} {value}");
@@ -2226,11 +2231,11 @@ void WiFiTaskCode(void * pvParameters) {
         char *ptr = messageQueue.front();
         if (ptr != nullptr) {
           if (the_mesh.debugPrint()) {
-            Serial.printf("Queue peek %s\n", ptr);
+            if (dbg) Serial.printf("Queue peek %s\n", ptr);
           }
 
           if (memcmp(the_mesh.getLogPrefs()->url, "http", 4) != 0) {
-            Serial.println("Url not set.");
+            if (dbg) Serial.println("Url not set.");
             messageQueue.pop();
             delete[] ptr;
           }
@@ -2248,23 +2253,23 @@ void WiFiTaskCode(void * pvParameters) {
             }
 
             if (the_mesh.debugPrint()) {
-              Serial.println("[HTTP] Post data");
+              if (dbg) Serial.println("[HTTP] Post data");
             }
             int httpResponseCode = https.POST(ptr);
 
             if (httpResponseCode > 0) {
               String response = https.getString();
-              Serial.printf("[HTTP] POST: %d | %s\n", httpResponseCode, response.c_str());
+              if (dbg) Serial.printf("[HTTP] POST: %d | %s\n", httpResponseCode, response.c_str());
               sent = true;
             } else {
-              Serial.printf("[HTTP] ERROR: %d\n", httpResponseCode);
+              if (dbg) Serial.printf("[HTTP] ERROR: %d\n", httpResponseCode);
               ++sendFailures;
             }
 
             https.end();
           } else {
             ++sendFailures;
-            Serial.println("[HTTP] Unable to connect");
+            if (dbg) Serial.println("[HTTP] Unable to connect");
           }
 
           if (sent) {
@@ -2274,7 +2279,7 @@ void WiFiTaskCode(void * pvParameters) {
             delete[] ptr;
             unsigned aft = ESP.getFreeHeap();
             if (the_mesh.debugPrint()) {
-              Serial.printf("free mem: %u -> %u >> %d\n",bef,aft,bef-aft);
+              if (dbg) Serial.printf("free mem: %u -> %u >> %d\n",bef,aft,bef-aft);
             }
           }
         }
@@ -2283,7 +2288,7 @@ void WiFiTaskCode(void * pvParameters) {
       if (webserver) {
         ws.cleanupClients(5); 
       } else if (!webserver && the_mesh.getLogPrefs()->web) {
-        Serial.println("Start webserver");
+        if (dbg) Serial.println("Start webserver");
         setupWebserver();
         webserver = true;
       }
@@ -2293,7 +2298,7 @@ void WiFiTaskCode(void * pvParameters) {
       char sender[(PUB_KEY_SIZE * 2) + 1];
       mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
 
-      Serial.println("Reconenct wifi...");
+      if (dbg) Serial.println("Reconenct wifi...");
 
       // if WiFi is down, try reconnecting
       if (!sendsys) {
@@ -2495,17 +2500,17 @@ void setupWebserver() {
       (void)len;
 
     if (type == WS_EVT_CONNECT) {
-      Serial.println("ws connect");
+      if (dbg) Serial.println("ws connect");
       client->setCloseClientOnQueueFull(false);
       client->ping();
     } else if (type == WS_EVT_DISCONNECT) {
-      Serial.println("ws disconnect");
+      if (dbg) Serial.println("ws disconnect");
     } else if (type == WS_EVT_ERROR) {
-      Serial.println("ws error");
+      if (dbg) Serial.println("ws error");
     } else if (type == WS_EVT_PONG) {
-      Serial.println("ws pong");
+      if (dbg) Serial.println("ws pong");
     } else if (type == WS_EVT_DATA) {
-      Serial.println("ws data");
+      if (dbg) Serial.println("ws data");
     }
   });
 
