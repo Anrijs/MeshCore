@@ -36,8 +36,8 @@
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
-#define FIRMWARE_VER_TEXT "v1.11.0"
-#define LOGGER_VER_TEXT "v1.1"
+#define FIRMWARE_VER_TEXT "v1.14.0"
+#define LOGGER_VER_TEXT "v1.2"
 #define BUILD_DATE __DATE__ " " __TIME__
 #define FULL_VER_TEXT "fw: " FIRMWARE_VER_TEXT ", logger: " LOGGER_VER_TEXT ", build-time: " BUILD_DATE
 
@@ -159,7 +159,8 @@ struct NodePrefs {  // persisted to file
   double node_lat, node_lon;
   float freq;
   uint8_t tx_power_dbm;
-  uint8_t unused[3];
+  uint8_t hash_mode;
+  uint8_t unused[2];
 };
 
 struct TelemetryRule {
@@ -603,12 +604,10 @@ protected:
       pkt->calculatePacketHash(hash);
 
       char sender[(PUB_KEY_SIZE * 2) + 1];
-      char path[(pkt->path_len * 2) + 1];
       char payload[(pkt->payload_len * 2) + 1];
       char strhash[MAX_HASH_SIZE * 2 + 1];
 
       mesh::Utils::toHex(sender, self_id.pub_key, PUB_KEY_SIZE);
-      mesh::Utils::toHex(path, pkt->path, pkt->path_len);
       mesh::Utils::toHex(payload, pkt->payload, pkt->payload_len);
       mesh::Utils::toHex(strhash, hash, MAX_HASH_SIZE);
 
@@ -618,9 +617,10 @@ protected:
       doc["reporter"] = sender;
       doc["time"]["local"] = getRTCClock()->getCurrentTime();
       doc["packet"]["header"] = pkt->header;
-      doc["packet"]["path"] = path;
+      doc["packet"]["path"] = getPath(pkt);
       doc["packet"]["payload"] = payload;
       doc["packet"]["snr"] = pkt->getSNR();
+      doc["packet"]["hash_size"] = pkt->getPathHashSize();
       doc["packet"]["decoded"] = rawDecoded ? 1 : 0;
       messageQueue.push(doc);
     }
@@ -667,6 +667,7 @@ protected:
     doc["reporter"] = sender;
     doc["hash"] = strhash;
     doc["snr"] = pkt->getSNR();
+    doc["hash_size"] = pkt->getPathHashSize();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = timestamp;
     doc["contact"]["new"] = is_new;
@@ -715,11 +716,20 @@ protected:
 
   String getPath(mesh::Packet* pkt) {
     String path = "";
+    int hashsize = pkt->getPathHashSize();
+    int hops = pkt->getPathHashCount();
+    int blen = pkt->getPathByteLen();
+    
     if (!pkt->isRouteDirect()) {
+      int partsize = 0;
       char buf[4];
-      for (size_t i = 0; i < pkt->path_len; i++) {
+      for (size_t i = 0; i < blen; i++) {
         sprintf(buf, "%02x", pkt->path[i]);
-        if (i != 0) path += ",";
+        partsize++;
+        if (partsize == hashsize) {
+          partsize = 0;
+          if (i >= hashsize) path += ",";
+        }
         path += buf;
       }
     }
@@ -769,7 +779,7 @@ protected:
       temp[len++] = attempt;  // hide attempt number at tail end of payload
     }
 
-    return createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id, recipient.shared_secret, temp, len);
+    return createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id, recipient.getSharedSecret(self_id), temp, len);
   }
 
   void onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) override {
@@ -790,6 +800,7 @@ protected:
     doc["reporter"] = sender;
     doc["hash"] = strhash;
     doc["snr"] = pkt->getSNR();
+    doc["hash_size"] = pkt->getPathHashSize();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = sender_timestamp;
     doc["contact"]["type"] = from.type;
@@ -865,6 +876,7 @@ protected:
     doc["reporter"] = sender;
     doc["hash"] = strhash;
     doc["snr"] = pkt->getSNR();
+    doc["hash_size"] = pkt->getPathHashSize();
     doc["time"]["local"] = getRTCClock()->getCurrentTime();
     doc["time"]["sender"] = timestamp;
     doc["message"]["text"] = text;
@@ -877,7 +889,7 @@ protected:
     if (pkt->isRouteDirect()) {
       Serial.printf("PUBLIC CHANNEL MSG -> (Direct!)\n");
     } else {
-      Serial.printf("PUBLIC CHANNEL MSG -> (Flood) hops %d\n", pkt->path_len);
+      Serial.printf("PUBLIC CHANNEL MSG -> (Flood) hops %d, %d byte hash)\n", pkt->getPathHashCount(), pkt->getPathHashSize());
     }
 
     Serial.printf("   %s\n", text);
@@ -958,19 +970,16 @@ protected:
       }
     } else if (cmd == "/ping") {
       rep = "Pong! ";
-      if (pkt->path_len == 0) {
+      int hops = pkt->getPathHashCount();
+      if (hops == 0) {
         rep += "0 hops";
       } else {
         char buf[3];
-        rep += pkt->path_len;
+        rep += hops;
         rep += " hop";
-        if (pkt->path_len != 1) rep += "s";
+        if (hops != 1) rep += "s";
         rep += ": ";
-        for (int i=0;i<pkt->path_len;i++) {
-          sprintf(buf, "%02X", pkt->path[i]);
-          if (i > 0) rep += ',';
-          rep += buf;
-        }
+        rep += getPath(pkt);
       }
     } else {
       return; // unknown command
@@ -991,7 +1000,7 @@ protected:
         mesh::Packet* opkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, len);
         if (opkt != NULL) {
           Serial.println("pkt OK");
-          sendFlood(opkt, 2000);
+          sendFlood(opkt, 2000, pkt->getPathHashSize());
         }
       }
     }
@@ -1229,6 +1238,7 @@ public:
     strcpy(_prefs.node_name, "NONAME");
     _prefs.freq = LORA_FREQ;
     _prefs.tx_power_dbm = LORA_TX_POWER;
+    _prefs.hash_mode = 0;
 
     _telemetry.version = TELEMETRY_VERSION;
     _telemetry.retries = TELEMETRY_DEFAULT_RETRIES;
@@ -1390,7 +1400,7 @@ public:
   void sendSelfAdvert(int delay_millis) {
     auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
     if (pkt) {
-      sendFlood(pkt, delay_millis);
+      sendFlood(pkt, delay_millis, _prefs.hash_mode + 1);
       AdvertDataParser* parser = reportAdv(pkt, false);
         if (parser) delete parser;
     }
@@ -1421,7 +1431,7 @@ public:
       int len = strlen((char *) &temp[5]);
       auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + len);
       if (pkt) {
-        sendFlood(pkt);
+        sendFlood(pkt, 0, _prefs.hash_mode + 1);
 
         _tables->hasSeen2(pkt);
 
@@ -1622,6 +1632,10 @@ public:
         _prefs.freq = atof(&config[5]);
         savePrefs();
         Serial.println("  OK - reboot to apply");
+      } else if (memcmp(config, "path.hash.mode ", 15) == 0) {
+        _prefs.hash_mode = atoi(&config[15]);
+        savePrefs();
+        Serial.println("  OK");
       } else {
         Serial.printf("  ERROR: unknown config: %s\n", config);
       }
@@ -2352,6 +2366,7 @@ void setupWebserver() {
     doc["node_prefs"]["node_lon"] = the_mesh.getNodePrefs()->node_lon;
     doc["node_prefs"]["freq"] = the_mesh.getNodePrefs()->freq;
     doc["node_prefs"]["tx_power_dbm"] = the_mesh.getNodePrefs()->tx_power_dbm;
+    doc["node_prefs"]["hash_mode"] = the_mesh.getNodePrefs()->hash_mode;
 
     doc["wifi_prefs"]["ssid"] = the_mesh.getWiFiPrefs()->ssid;
     doc["wifi_prefs"]["password"] = the_mesh.getWiFiPrefs()->password;
