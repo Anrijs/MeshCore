@@ -1402,6 +1402,7 @@ public:
     auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
     if (pkt) {
       sendFlood(pkt, delay_millis, _prefs.hash_mode + 1);
+      pkt->setPathHashCount(_prefs.hash_mode + 1);
       AdvertDataParser* parser = reportAdv(pkt, false);
         if (parser) delete parser;
     }
@@ -2167,6 +2168,7 @@ void WiFiTaskCode(void * pvParameters) {
   static bool connected = false;
   static bool sendsys   = false;
   static bool webserver = false;
+  static bool reported = false;
   static unsigned sendFailures = 0;
   static unsigned long lastConencted = 0;
   static unsigned long nextReport = 30000;
@@ -2194,7 +2196,7 @@ void WiFiTaskCode(void * pvParameters) {
         ntpNext = lastConencted + ntpSyncInterval;
       }
 
-      if (the_mesh.getLogPrefs()->selfreport > 0 && millis() > nextReport) {
+      if (!reported || (the_mesh.getLogPrefs()->selfreport > 0 && millis() > nextReport)) {
         char sender[(PUB_KEY_SIZE * 2) + 1];
         mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
 
@@ -2275,6 +2277,7 @@ void WiFiTaskCode(void * pvParameters) {
           if (sent) {
             unsigned bef = ESP.getFreeHeap();
             sendFailures = 0;
+            reported = true;
             messageQueue.pop();
             delete[] ptr;
             unsigned aft = ESP.getFreeHeap();
