@@ -724,16 +724,22 @@ protected:
     if (!pkt->isRouteDirect()) {
       int partsize = 0;
       char buf[4];
+
       for (size_t i = 0; i < blen; i++) {
+        if (partsize == 0 && i != 0) {
+          path += ",";
+        }
+
         sprintf(buf, "%02x", pkt->path[i]);
+        path += buf;
+
         partsize++;
         if (partsize == hashsize) {
           partsize = 0;
-          if (i >= hashsize) path += ",";
         }
-        path += buf;
       }
     }
+
     return path;
   }
 
