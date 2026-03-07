@@ -1402,7 +1402,7 @@ public:
     auto pkt = createSelfAdvert(_prefs.node_name, _prefs.node_lat, _prefs.node_lon);
     if (pkt) {
       sendFlood(pkt, delay_millis, _prefs.hash_mode + 1);
-      pkt->setPathHashCount(_prefs.hash_mode + 1);
+      pkt->setPathHashSizeAndCount(_prefs.hash_mode + 1, 0);
       AdvertDataParser* parser = reportAdv(pkt, false);
         if (parser) delete parser;
     }
