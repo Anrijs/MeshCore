@@ -123,20 +123,6 @@ const std::vector<std::vector<const char*>> keypadChars = {
     {" ", "(", ")", "[", "]", "{", "}", ":", ";", "<", ">"}
 };
 
-//     " 0",
-//     ".,!?1",
-//     "aābcčAĀBCČ2",
-//     "deēfDEĒF3",
-//     "gģhiīGĢHIĪ4",
-//     "jkķlļJKĶLĻ5",
-//     "mnņoMNŅO6",
-//     "pqrsšPQRSŠ7",
-//     "tuūvTUŪV8",
-//     "wxyzžWXYZŽ9",
-//     " +-_@#$%^&*/\\",
-//     " ()[]{}:;<>"
-// };
-
 class GUI {
     struct {
         Page* stack[16]; // TODO: this should be costant
@@ -156,15 +142,9 @@ class GUI {
 
     int brightness = 32;
 
-    
-
     const char* getKeypadChar() {
-        Serial.printf("Get char: [%d,%d]\n", t9key, t9pos);
         if (t9key > keypadChars.size()) { return ""; };
-
         t9pos = t9pos % keypadChars[t9key].size();
-
-        Serial.printf("Get char: [%s]\n", keypadChars[t9key][t9pos]);
         return keypadChars[t9key][t9pos];
     }
     
@@ -690,14 +670,21 @@ public:
                         sprintf(clock, "%02d:%02d [%d]", m.hh, m.mm, m.repeats);
                         sender = clock;
                     } else {
-                        int splitPos = m.msg.indexOf(":");
                         sender = "";
-                        for (int j=0;j<splitPos;j++) {
-                            if (m.msg.charAt(j) < 128) {
-                                sender += m.msg.charAt(j);
+                        mesg = m.msg;
+                        if (ch) {
+                            int splitPos = m.msg.indexOf(":");
+                            if (splitPos > 0) {
+                                for (int j=0;j<splitPos;j++) {
+                                    if (m.msg.charAt(j) < 128) {
+                                        sender += m.msg.charAt(j);
+                                    }
+                                }
+                                mesg = m.msg.substring(splitPos + 2);
                             }
+                        } else if (ci) {
+                            sender = ci->name;
                         }
-                        mesg = m.msg.substring(splitPos + 2);
                         sprintf(clock, "[%02d:%02d] ", m.hh, m.mm);
                         sender = clock + sender;
                     }
@@ -789,9 +776,7 @@ public:
         if (c == 0x0A) {
             // send
             if (pos < 1) return;
-            
-            Serial.printf("onInput commit msg: %s\n", buffer);
-            
+
             if (this->ch) {
                 this->gui->outmessages->push_back(message(this->ch, buffer, 0, 0, true));
             } else if (this->ci) {

@@ -349,7 +349,7 @@ void loop() {
     if (m.ch) {
       pkt = the_mesh.createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, m.ch->channel, temp, 5 + len);
     } else if (m.ci) {
-      pkt = the_mesh.createDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci->id, m.ci->shared_secret, temp, 5 + len); // createGroupDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci, temp, 5 + len);
+      pkt = the_mesh.createDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci->id, m.ci->getSharedSecret(the_mesh.self_id), temp, 5 + len); // createGroupDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci, temp, 5 + len);
     }
     
     if (pkt) {
