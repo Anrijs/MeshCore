@@ -78,13 +78,19 @@ void Menu::onInput(char c) {
     switch (c) {
     case 0x1B:
         menuitems[selected]->invalidate();
-        if (--selected < 0) selected = menuitems.size() - 1;
+        if (--selected < 0) {
+            selected = menuitems.size() - 1;
+            invalidate();
+        }
         menuitems[selected]->invalidate();
         if (!menuitems[selected]->isSelectable()) onInput(c);
         break;
     case 0x08:
         menuitems[selected]->invalidate();
-        if (++selected >= menuitems.size()) selected = 0;
+        if (++selected >= menuitems.size()) {
+            selected = 0;
+            invalidate();
+        }
         menuitems[selected]->invalidate();
         if (!menuitems[selected]->isSelectable()) onInput(c);
         break;
