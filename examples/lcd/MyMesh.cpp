@@ -204,7 +204,7 @@ void MyMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t 
 
   if (ci) {
     DateTime dt(sender_timestamp + gmtOffset);
-    messages->push_back(message(ci, text, dt.hour(), dt.minute(), false));
+    appendMessage(*messages, message(ci, text, dt.hour(), dt.minute(), false));
     gui->draw(true);
   } else {
     Serial.printf("onMessageRecv: Contact not found\n", from.name);
@@ -235,7 +235,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packe
 
   if (ch) {
     DateTime dt(timestamp + gmtOffset);
-    messages->push_back(message(ch, text, dt.hour(), dt.minute(), false));
+    appendMessage(*messages, message(ch, text, dt.hour(), dt.minute(), false));
     gui->draw(true);
   }
 }

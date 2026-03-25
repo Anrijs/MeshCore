@@ -355,7 +355,7 @@ void loop() {
     if (pkt) {
       m.setHash(pkt);
       m.repeats--; // reduce seen by sending
-      gui.messages->push_back(m);
+      appendMessage(*gui.messages, m);
       the_mesh.sendFlood(pkt);
       Serial.println("   Sent.");
     } else {

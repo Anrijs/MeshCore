@@ -96,6 +96,15 @@ struct message {
     }
 };
 
+static const size_t MAX_LCD_MESSAGES = 50;
+
+inline void appendMessage(std::vector<message>& buffer, const message& msg) {
+    if (buffer.size() >= MAX_LCD_MESSAGES) {
+        buffer.erase(buffer.begin());
+    }
+    buffer.push_back(msg);
+}
+
 enum PageType {
     PAGE_TYPE_CUSTOM,
     PAGE_TYPE_MENU,
@@ -778,9 +787,9 @@ public:
             if (pos < 1) return;
 
             if (this->ch) {
-                this->gui->outmessages->push_back(message(this->ch, buffer, 0, 0, true));
+                appendMessage(*this->gui->outmessages, message(this->ch, buffer, 0, 0, true));
             } else if (this->ci) {
-                this->gui->outmessages->push_back(message(this->ci, buffer, 0, 0, true));
+                appendMessage(*this->gui->outmessages, message(this->ci, buffer, 0, 0, true));
             }
             buffer[0] = 0;
             invalidate();
