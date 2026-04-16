@@ -104,11 +104,23 @@ struct message {
     }
 };
 
-static const size_t MAX_LCD_MESSAGES = 50;
+static const size_t MAX_LCD_MESSAGES = 250;
+static const size_t MAX_CHANNEL_MESSAGES = 10;
 
 inline void appendMessage(std::vector<message>& buffer, const message& msg) {
-    if (buffer.size() >= MAX_LCD_MESSAGES) {
-        buffer.erase(buffer.begin());
+    int count = 0;
+    auto first = buffer.end();
+
+    for (auto it = buffer.begin(); it != buffer.end(); ++it) {
+        if (it->cmpChannel(msg)) {
+            if (count == 0) first = it;
+            count++;
+        }
+    }
+
+    if (count >= MAX_CHANNEL_MESSAGES || buffer.size() >= MAX_LCD_MESSAGES) {
+        if (first == buffer.end()) first = buffer.begin();
+        buffer.erase(first);
     }
     buffer.push_back(msg);
 }
