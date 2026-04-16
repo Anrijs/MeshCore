@@ -346,7 +346,6 @@ time_t parseDateTime(const char* datetime) {
   return mktime(&t);  // returns epoch time
 }
 
-
 void loop() {
   static long batRead = 0;
   static long guiUpdate = 0;
@@ -362,7 +361,6 @@ void loop() {
       batRead = millis() + 10000;
       menu.home.batt->invalidate();
     }
-
 
     sprintf(nfstr, "%d", radio_driver.getNoiseFloor());
     intervalToString(millis(), uptimestr);
@@ -433,12 +431,23 @@ void loop() {
     } else if (m.uc) {
       iscli = true;
 
-      Serial.print("CLI process: ");
-      Serial.println(m.msg);
+      message rep(m.uc, "Unknwon command", m.hh, m.mm, false);
+      
+      if (m.msg == "/lp on") {
+        radio_driver.setLowPower(true, 16, 4);
+        rep.msg = "Set Low Power: ON";
+      } else if (m.msg == "/lp off") {
+        radio_driver.setLowPower(false);
+        rep.msg = "Set Low Power: OFF";
+      }
 
+      Serial.print("User console: ");
+      Serial.print(m.msg);
+      Serial.println(" ->");
+      Serial.println(rep.msg);
+      
       appendMessage(*gui.messages, m);
-
-      // TODO: add cli commands
+      appendMessage(*gui.messages, rep);
     }
     
     if (pkt) {

@@ -4,7 +4,7 @@
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
 #include <TechoLiteBoard.h>
-#include <helpers/radiolib/CustomSX1262Wrapper.h>
+#include <helpers/radiolib/CustomSX1262LPWrapper.h>
 #include <helpers/AutoDiscoverRTCClock.h>
 #ifdef DISPLAY_CLASS
   #include <helpers/ui/SSD1681Display.h>
