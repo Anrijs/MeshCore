@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include <time.h>
 
 #ifndef NRF52_PLATFORM
     #error "Only NRF52 supported"
@@ -31,6 +32,7 @@ MyMesh the_mesh(radio_driver, fast_rng, *new VolatileRTCClock(), tables, &gui, &
 char battstr[16] = "";
 char nfstr[16] = "";
 char uptimestr[16] = "0d 00:00:00";
+char maxuptimestr[16] = "0d 00:00:00";
 
 struct {
   struct {
@@ -43,6 +45,7 @@ struct {
     MIString* nf;
     MIString* batt;
     MIString* uptime;
+    MIString* maxuptime;
   } home;
 
   struct {
@@ -147,6 +150,7 @@ void setupMenu() {
   menu.home.nf = new MIString(&gui, "Noise Floor", nfstr, 15);
   menu.home.batt = new MIString(&gui, "Battery", battstr, 15);
   menu.home.uptime = new MIString(&gui, "Uptime", uptimestr, 15);
+  menu.home.maxuptime = new MIString(&gui, "Max.Uptime", maxuptimestr, 15);
 
   menu.home.flood = new MIAction(&gui, "Adv. Flood", &miActionFlood);
   menu.home.advert = new MIAction(&gui, "Adv. Direct", &miActionAdvert);
@@ -158,6 +162,7 @@ void setupMenu() {
   menu.home.m->add(menu.home.nf);
   menu.home.m->add(menu.home.batt);
   menu.home.m->add(menu.home.uptime);
+  menu.home.m->add(menu.home.maxuptime);
 
   // dev
   MIAction* rot = new MIAction(&gui, "Rotate", &miActionRotate);
@@ -281,11 +286,73 @@ void setup() {
   }
 }
 
+void intervalToString(long ms, char* dst) {
+  long totalSeconds = ms / 1000;
+  int days    = totalSeconds / 86400;
+  int hours   = (totalSeconds % 86400) / 3600;
+  int minutes = (totalSeconds % 3600) / 60;
+  int seconds = totalSeconds % 60;
+
+  sprintf(dst, "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
+}
+
+void updateUptime() {
+  static const unsigned long SAVE_INTERVAL_MS = 30UL * 60UL * 1000UL;
+  static unsigned long lastCheckAt = 0;
+  static bool hasChecked = false;
+
+  unsigned long now = millis();
+  if (hasChecked && (now - lastCheckAt) < SAVE_INTERVAL_MS) {
+    return;
+  }
+  lastCheckAt = now;
+  hasChecked = true;
+
+  unsigned long savedUptime = 0;
+  if (InternalFS.exists("/uptime")) {
+    File file = InternalFS.open("/uptime");
+    if (file) {
+      char buffer[24];
+      size_t len = file.readBytes(buffer, sizeof(buffer) - 1);
+      buffer[len] = 0;
+      savedUptime = strtoul(buffer, nullptr, 10);
+      file.close();
+    }
+  }
+
+  if (now > savedUptime) {
+    InternalFS.remove("/uptime");
+    File file = InternalFS.open("/uptime", FILE_O_WRITE);
+    if (file) {
+      file.print(now);
+      file.close();
+      savedUptime = now;
+    }
+  }
+  intervalToString(savedUptime, maxuptimestr);
+}
+
+time_t parseDateTime(const char* datetime) {
+  struct tm t;
+
+  sscanf(datetime, "%d-%d-%d %d:%d:%d",
+         &t.tm_year, &t.tm_mon, &t.tm_mday,
+         &t.tm_hour, &t.tm_min, &t.tm_sec);
+
+  t.tm_year -= 1900;  // years since 1900
+  t.tm_mon  -= 1;     // months 0-11
+  t.tm_isdst = -1;    // auto detect DST
+
+  return mktime(&t);  // returns epoch time
+}
+
+
 void loop() {
   static long batRead = 0;
   static long guiUpdate = 0;
   
   the_mesh.loop();
+  updateUptime();
 
   if (gui.isOn() && millis() > guiUpdate) {
     if (millis() > batRead) {
@@ -295,16 +362,13 @@ void loop() {
       menu.home.batt->invalidate();
     }
 
-    long totalSeconds = millis() / 1000;
-    int days    = totalSeconds / 86400;
-    int hours   = (totalSeconds % 86400) / 3600;
-    int minutes = (totalSeconds % 3600) / 60;
-    int seconds = totalSeconds % 60;
 
     sprintf(nfstr, "%d", radio_driver.getNoiseFloor());
-    sprintf(uptimestr, "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
+    intervalToString(millis(), uptimestr);
+
     guiUpdate = millis() + 1000;
     menu.home.uptime->invalidate();
+    menu.home.maxuptime->invalidate();
     menu.home.nf->invalidate();
 
     if (gui.page == menu.home.m) {
