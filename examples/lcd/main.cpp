@@ -49,6 +49,7 @@ struct {
     Menu* m = new Menu(&gui, "Settings");
     MIPage* minfo;
     MIPage* mradio;
+    MIPage* mconsole;
     MIAction* mireboot;
     struct {
       Menu* m = new Menu(&gui, "Public Info");
@@ -164,16 +165,16 @@ void setupMenu() {
   menu.home.m->add(rot);
 
   // dev stuff
-  Keeb* devkeeb = new Keeb(&gui);
-  MIPage* devp1 = new MIPage(&gui, "Keyboard", devkeeb);
-  //menu.home.m->add(devp1);
+  Channel* cli = new Channel(&gui, new UserConsole());
   
   /** Settings **/
   menu.settings.minfo = new MIPage(&gui, "Public Info", menu.settings.info.m);
   menu.settings.mradio = new MIPage(&gui, "Radio", menu.settings.radio.m);
+  menu.settings.mconsole = new MIPage(&gui, "Console", cli);
   menu.settings.mireboot = new MIAction(&gui, "Save & Reboot", &miActionSaveAndReboot);
   menu.settings.m->add(menu.settings.minfo);
   menu.settings.m->add(menu.settings.mradio);
+  menu.settings.m->add(menu.settings.mconsole);
   menu.settings.m->add(menu.settings.mireboot);
   menu.settings.m->add(new MIAction(&gui, "Bright+", &miActionBrightnessP));
   menu.settings.m->add(new MIAction(&gui, "Bright-", &miActionBrightnessM));
@@ -345,10 +346,20 @@ void loop() {
 
     int len = strlen((char *) &temp[5]);
     mesh::Packet* pkt;
+    bool iscli = false;
     if (m.ch) {
       pkt = the_mesh.createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, m.ch->channel, temp, 5 + len);
     } else if (m.ci) {
       pkt = the_mesh.createDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci->id, m.ci->getSharedSecret(the_mesh.self_id), temp, 5 + len); // createGroupDatagram(PAYLOAD_TYPE_TXT_MSG, m.ci, temp, 5 + len);
+    } else if (m.uc) {
+      iscli = true;
+
+      Serial.print("CLI process: ");
+      Serial.println(m.msg);
+
+      appendMessage(*gui.messages, m);
+
+      // TODO: add cli commands
     }
     
     if (pkt) {
@@ -357,7 +368,7 @@ void loop() {
       appendMessage(*gui.messages, m);
       the_mesh.sendFlood(pkt);
       Serial.println("   Sent.");
-    } else {
+    } else if (!iscli) {
       Serial.println("   ERROR: unable to send");
     }
     gui.draw(true);

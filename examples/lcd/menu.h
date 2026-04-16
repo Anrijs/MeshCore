@@ -27,6 +27,7 @@
 #include <Packet.h>
 #include <helpers/ChannelDetails.h>
 #include <helpers/ContactInfo.h>
+#include "console.h"
 #include "roboto.h"
 
 #define LIGHT_MODE
@@ -72,8 +73,9 @@
 
 // TODO: add channel/user ref
 struct message {
-    ChannelDetails* ch;
-    ContactInfo* ci;
+    ChannelDetails* ch = nullptr;
+    ContactInfo* ci = nullptr;
+    UserConsole* uc = nullptr;
     uint8_t hash[MAX_HASH_SIZE];
     String msg;
     uint8_t hh;
@@ -86,6 +88,8 @@ struct message {
     message(ChannelDetails* ch, String str, uint8_t hh, uint8_t mm, bool me): ch(ch), msg(str), hh(hh), mm(mm), me(me) { };
     message(ContactInfo* ci, char* buf, uint8_t hh, uint8_t mm, bool me): ci(ci), msg(buf), hh(hh), mm(mm), me(me) { };
     message(ContactInfo* ci, String str, uint8_t hh, uint8_t mm, bool me): ci(ci), msg(str), hh(hh), mm(mm), me(me) { };
+    message(UserConsole* uc, char* buf, uint8_t hh, uint8_t mm, bool me): uc(uc), msg(buf), hh(hh), mm(mm), me(me) { };
+    message(UserConsole* uc, String str, uint8_t hh, uint8_t mm, bool me): uc(uc), msg(str), hh(hh), mm(mm), me(me) { };
 
     void setHash(uint8_t* src) {
         memcpy(&hash, hash, MAX_HASH_SIZE);
@@ -93,6 +97,10 @@ struct message {
 
     void setHash(mesh::Packet* packet) {
         packet->calculatePacketHash(hash);
+    }
+
+    bool cmpChannel(const message& msg) {
+        return msg.ch == ch && msg.ci == ci && msg.uc == uc;
     }
 };
 
@@ -629,6 +637,8 @@ class Channel: public Page {
     // TODO: feed messages from mesh
     ChannelDetails* ch = nullptr;
     ContactInfo* ci = nullptr;
+    UserConsole* uc = nullptr;
+
     char buffer[128] = "";
     size_t bufsize = 128;
     int lastsize = -1;
@@ -644,6 +654,9 @@ public:
     }
     Channel(GUI* gui, ContactInfo* ci): Page(gui, PAGE_TYPE_CHANNEL) {
         this->ci = ci;
+    }
+    Channel(GUI* gui, UserConsole* uc): Page(gui, PAGE_TYPE_CHANNEL) {
+        this->uc = uc;
     }
     int stripes[2] = {
         MI_COLOR_BKG,
@@ -672,6 +685,7 @@ public:
 
                     if (this->ch && this->ch != m.ch) continue;
                     if (this->ci && this->ci != m.ci) continue;
+                    if (this->uc && this->uc != m.uc) continue;
                     m.read = true;
 
                     if (m.me) {
@@ -790,6 +804,8 @@ public:
                 appendMessage(*this->gui->outmessages, message(this->ch, buffer, 0, 0, true));
             } else if (this->ci) {
                 appendMessage(*this->gui->outmessages, message(this->ci, buffer, 0, 0, true));
+            } else if (this->uc) {
+                appendMessage(*this->gui->outmessages, message(this->uc, buffer, 0, 0, true));
             }
             buffer[0] = 0;
             invalidate();
