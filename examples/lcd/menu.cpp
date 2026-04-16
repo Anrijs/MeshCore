@@ -141,7 +141,11 @@ void GUI::onInput(char c) {
         return;
     }
     if (c == 0x1B) {
-        pop();
+        if (pages.size > 0) {
+            pop();
+        } else {
+            page->onInput(c);
+        }
     } else if (t9mode) {
         // keypad code
         if ((c >= '0' && c <= '9') || c == '*' || c == '#') {
