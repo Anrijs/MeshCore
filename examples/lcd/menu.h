@@ -286,12 +286,11 @@ public:
         
         TFT_eSprite row = TFT_eSprite(gui->tft);
         row.createSprite(w, h);
-        row.loadFont(Roboto_Light_18);
+        row.loadFont(Roboto_Medium_16);
         row.setTextWrap(false);
-        row.setCursor(MI_FONT_PADDING, 0);
         row.setTextColor(MI_COLOR_TEXT);
         row.fillRect(0,0,w,h,bkg);
-        row.setCursor(MI_FONT_PADDING,MI_FONT_PADDING);
+        row.setCursor(MI_FONT_PADDING,0);
         row.print(label);
         overlay(&row);
         if (redraw) row.pushSprite(0, y);
@@ -613,26 +612,6 @@ class Boot: public Page {
     void draw() override;
 };
 
-class Keeb: public Page {
-    public:
-    Keeb(GUI* gui): Page(gui, PAGE_TYPE_CUSTOM) {}
-    void draw() override {
-        uint16_t h = gui->tft->height();
-        uint16_t w = gui->tft->width();
-        uint16_t ystep = h / 8;
-        uint16_t xstep = w / 12;
-
-        for (int row = 0; row < 5; row++) {
-            for (int col = 0; col < 12; col++) {
-                uint16_t x = (xstep * col);
-                uint16_t y = h - 1 - (ystep * row);
-                
-                gui->tft->drawRect(x, y, xstep - 1, ystep - 1, TFT_BLACK);
-            }
-        }
-    }
-};
-
 class Channel: public Page {
     // TODO: feed messages from mesh
     ChannelDetails* ch = nullptr;
@@ -744,13 +723,12 @@ public:
                     row.print(sender);
 
                     // print message
-                    row.loadFont(Roboto_Light_18);
+                    row.loadFont(Roboto_Medium_16);
                     row.setTextColor(MI_COLOR_TEXT);
-                    row.setCursor(0, ln1h);
+                    row.setCursor(0, ln1h - MI_FONT_PADDING);
                     row.print(mesg);
                     row.pushSprite(1, y);
-                    gui->tft->loadFont(Roboto_Light_18);
-
+                    gui->tft->loadFont(Roboto_Medium_16);
 
                     read++;
 
@@ -783,7 +761,7 @@ public:
         y = h - ih;
 
         TFT_eSprite row = TFT_eSprite(gui->tft);
-        row.loadFont(Roboto_Light_18);
+        row.loadFont(Roboto_Medium_16);
         row.createSprite(gui->tft->width(), ih);
         row.setTextWrap(false);
         row.setTextColor(MI_COLOR_TEXT);

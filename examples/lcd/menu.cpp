@@ -114,7 +114,7 @@ void Boot::draw() {
     }
 
     gui->tft->setTextColor(TFT_WHITE);
-    gui->tft->loadFont(Roboto_Light_18);
+    gui->tft->loadFont(Roboto_Medium_16);
 
     // Bold text
     gui->tft->setCursor(10, 10);
@@ -245,13 +245,13 @@ void GUI::loop()  {
             uint16_t y = (h - d) / 2;
 
             TFT_eSprite row = TFT_eSprite(tft);
-            row.loadFont(Roboto_Light_18);
+            row.loadFont(Roboto_Medium_16);
             row.createSprite(d, d);
             row.setTextColor(MI_COLOR_T9_FONT);
             row.fillRect(0, 0, d, d, MI_COLOR_T9_BKG);
             uint16_t fw = row.textWidth(String(getKeypadChar()));
 
-            row.setCursor((d - fw) / 2,  + p);
+            row.setCursor((d - fw) / 2, 0);
             row.print(getKeypadChar());
             row.pushSprite(x, y);
 

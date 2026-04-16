@@ -141,16 +141,15 @@ bool miActionRotate(MIAction* action) {
 
 void setupMenu() {
   /** Home **/
-  menu.home.channels = new MIPage(&gui, "Channels", menu.channels.m);
-  menu.home.contacts = new MIPage(&gui, "Contacts", menu.contacts.m);
-  menu.home.settings = new MIPage(&gui, "Settings", menu.settings.m);
-  menu.home.nf = new MIString(&gui, "Noise Floor", nfstr, 15);
+  menu.home.channels = new MIPage(&gui, "Channels", menu.channels.m);
+  menu.home.contacts = new MIPage(&gui, "Contacts", menu.contacts.m);
+  menu.home.settings = new MIPage(&gui, "Settings", menu.settings.m);
+  menu.home.nf = new MIString(&gui, "Noise Floor", nfstr, 15);
   menu.home.batt = new MIString(&gui, "Battery", battstr, 15);
   menu.home.uptime = new MIString(&gui, "Uptime", uptimestr, 15);
 
-
-  menu.home.flood = new MIAction(&gui, "Adv. Flood", &miActionFlood);
-  menu.home.advert = new MIAction(&gui, "Adv. Direct", &miActionAdvert);
+  menu.home.flood = new MIAction(&gui, "Adv. Flood", &miActionFlood);
+  menu.home.advert = new MIAction(&gui, "Adv. Direct", &miActionAdvert);
   menu.home.m->add(menu.home.channels);
   menu.home.m->add(menu.home.contacts);
   menu.home.m->add(menu.home.settings);
