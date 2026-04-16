@@ -350,7 +350,8 @@ time_t parseDateTime(const char* datetime) {
 void loop() {
   static long batRead = 0;
   static long guiUpdate = 0;
-  
+
+  the_mesh.getRTCClock()->tick();
   the_mesh.loop();
   updateUptime();
 
