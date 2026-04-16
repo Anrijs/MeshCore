@@ -12,7 +12,6 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include "MyMesh.h"
-#include "utf2ascii.h"
 #include "MeshTables.h"
 #include <helpers/BaseChatMesh.h>
 

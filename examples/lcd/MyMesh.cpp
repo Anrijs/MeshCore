@@ -1,5 +1,4 @@
 #include "MyMesh.h"
-#include "utf2ascii.h"
 
 MyMesh::MyMesh(mesh::Radio& radio, StdRNG& rng, mesh::RTCClock& rtc, LcdMeshTables& tables, GUI* gui, std::vector<message>* messages, std::vector<message>* outmessages)
     : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
