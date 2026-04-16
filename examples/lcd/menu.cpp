@@ -2,7 +2,7 @@
 
 // toto: settings fields should be edited only on enter, hilight enter
 void GUI::draw(bool invalidate) {
-    wakeup();
+    if (!lcdOn) return; 
 
     if (!page) {
         tft->fillScreen(MI_COLOR_BKG);
@@ -138,7 +138,6 @@ void GUI::pop() {
 
 void GUI::onInput(char c) {
     if (!lcdOn) {
-        wakeup();
         return;
     }
     if (c == 0x1B) {

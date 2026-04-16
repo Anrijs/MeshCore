@@ -276,7 +276,7 @@ void loop() {
   
   the_mesh.loop();
 
-  if (millis() > guiUpdate && gui.isOn()) {
+  if (gui.isOn() && millis() > guiUpdate) {
     if (millis() > batRead) {
       uint16_t mv = board.getBattMilliVolts();
       sprintf(battstr, "%.2f V", (mv / 1000.0));
@@ -303,6 +303,7 @@ void loop() {
 
   if (Serial.available()) {
     while (Serial.available()) {
+      gui.wakeup();
       char c = Serial.read();
       Serial.printf("usb in: %02X\n", (int) c);
       gui.onInput(c);
@@ -313,6 +314,7 @@ void loop() {
   if (Serial1.available()) {
     Serial.print("keypad: ");
     while (Serial1.available()) {
+      gui.wakeup();
       char c = Serial1.read();
       Serial.print(c);
       gui.onInput(c);
@@ -321,7 +323,9 @@ void loop() {
     gui.draw();
   }
 
-  gui.loop();
+  if (gui.isOn()) {
+    gui.loop();
+  }
 
   if (the_mesh.outmessages->size() > 0) {
     message m = the_mesh.outmessages->front();

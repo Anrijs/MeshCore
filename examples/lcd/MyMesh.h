@@ -20,6 +20,8 @@
 #define DIRECT_SEND_PERHOP_FACTOR       6.0f
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS 250
 
+#define NEW_MSG_WAKEUP_DURATION 2000 // was 15s
+
 #define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRXNcg=="
 
 class MyMesh : public BaseChatMesh, ContactVisitor {

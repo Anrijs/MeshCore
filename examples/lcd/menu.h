@@ -197,10 +197,17 @@ public:
         return lcdOn;
     }
 
-    void wakeup() {
-        lcdOff = millis() + 15000;
+    void wakeup(long duration=15000) {
+        long oldwu = lcdOff;
+        long newwu = millis() + duration;
+        if (newwu > oldwu) {
+            lcdOff = newwu;
+        }
         if (!lcdOn) {
-            tft->writecommand(ST7789_SLPOUT);
+            tft->writecommand(ST7789_SLPOUT);   // Exit sleep
+            delay(120);                         // REQUIRED
+            tft->writecommand(ST7789_DISPON);   // Turn display on
+            delay(10);
             analogWrite(PIN_LCD_BL, brightness);
         }
         lcdOn = true;
@@ -208,7 +215,10 @@ public:
 
     void sleep() {
         if (lcdOn) {
+            tft->writecommand(ST7789_DISPOFF);
+            delay(10);
             tft->writecommand(ST7789_SLPIN);
+            delay(120);
             analogWrite(PIN_LCD_BL, 0);
         }
         lcdOn = false;
