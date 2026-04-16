@@ -211,24 +211,35 @@ void setupMenu() {
   menu.settings.radio.m->add(menu.settings.radio.tx);
 }
 
-void setup() {
-  pinMode(BTN_WAKE, INPUT);
-  Serial.begin(115200);
-  Serial1.begin(9600);
-
-  delay(100);
-
+void resetLcd() {
+  if (TFT_RST >= 0) {
+    pinMode(TFT_RST, OUTPUT);
+    digitalWrite(TFT_RST, LOW);
+    delay(20);
+    digitalWrite(TFT_RST, HIGH);
+    delay(150);
+  }
+  
   tft.init();
   tft.setRotation(3);
   tft.setAttribute(UTF8_SWITCH, 0);
 
   delay(100);
+  gui.wakeup();
+  gui.draw(true);
+  gui.setBrightness(16);
+}
+
+void setup() {
+  pinMode(BTN_WAKE, INPUT);
+  Serial.begin(115200);
+  Serial1.begin(9600);
 
   Boot* hello = new Boot(&gui);
   gui.page = hello;
+  resetLcd();
 
-  gui.draw();
-  gui.setBrightness(16);
+  delay(500);
 
   board.begin();
   setupMenu();
@@ -255,7 +266,7 @@ void setup() {
   gui.draw();
   delete hello;
 
-    // get all contacts
+  // get all contacts
   ContactsIterator iter = the_mesh.startContactsIterator();
   ContactInfo contact;
 
