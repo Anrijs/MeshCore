@@ -61,6 +61,8 @@
   #define MAX_CONTACTS         300
 #endif
 
+#define MAX_LOG_QUEUE_SIZE  32
+
 #define TELEMETRY_VERSION 1
 #define TELEMETRY_MAX_RULES 16
 #define TELEMETRY_DEFAULT_RETRIES 3
@@ -86,7 +88,9 @@ unsigned long ntpNext = 0;
 
 // RTOS, wifi thread
 TaskHandle_t WiFiTask;
+TaskHandle_t MeshTask;
 void WiFiTaskCode(void* pvParameters);
+void MeshTaskCode(void* pvParameters);
 
 // Web
 void setupWebserver();
@@ -99,26 +103,19 @@ void task_sleep(uint32_t ms) {
 }
 
 struct {
-  std::queue<char*> queue;
+  SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
+  std::queue<String> queue;
   unsigned discarded;
 
-  void push(String str) {
-    unsigned bef = ESP.getFreeHeap();
-
-    char* msgData = new char[str.length() + 1];
-    str.toCharArray(msgData, str.length() + 1);
-
-    // discard old
-    while (queue.size() > 32) {
+  void push(const String& str) {
+      xSemaphoreTake(mutex, portMAX_DELAY);
+      while (queue.size() >= MAX_LOG_QUEUE_SIZE) {
       discarded++;
-      char* ptr = queue.front();
-      Serial.printf("Discarded message (%u) %s\n", discarded, ptr);
+          Serial.printf("Discarded message (%u) %s\n", discarded, queue.front().c_str());
       queue.pop();
-      delete[] ptr;
     }
-    queue.push(msgData);
-
-    unsigned aft = ESP.getFreeHeap();
+      queue.push(str);
+      xSemaphoreGive(mutex);
   }
 
   void push(const JsonDocument& doc) {
@@ -127,9 +124,25 @@ struct {
     push(postData);
   }
 
-  size_t size() { return queue.size(); }
-  char* front() { return queue.front(); }
-  void  pop()   { queue.pop(); }
+  size_t size() { 
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    size_t s = queue.size(); 
+    xSemaphoreGive(mutex);
+    return s;
+  }
+  String front() {
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    String val = queue.empty() ? String() : queue.front();
+    xSemaphoreGive(mutex);
+    return val;
+  }
+  void pop() {
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    if (!queue.empty()) {
+      queue.pop();
+    }
+    xSemaphoreGive(mutex);
+  }
 } messageQueue;
 
 unsigned long getTimestamp() {
@@ -2277,7 +2290,7 @@ void WiFiTaskCode(void * pvParameters) {
   static unsigned long lastConencted = 0;
   static unsigned long nextReport = 30000;
 
-  Serial.print("Task1 running on core ");
+  Serial.print("WiFiTask running on core ");
   Serial.println(xPortGetCoreID());
 
   WiFiClientSecure* client = new WiFiClientSecure;
@@ -2334,24 +2347,22 @@ void WiFiTaskCode(void * pvParameters) {
         String auth = "Bearer ";
         auth += the_mesh.getLogPrefs()->auth;
 
-        char *ptr = messageQueue.front();
-        if (ptr != nullptr) {
+        String msg = messageQueue.front();
+        if (!msg.isEmpty()) {
           if (the_mesh.debugPrint()) {
-            if (dbg) Serial.printf("Queue peek %s\n", ptr);
+            if (dbg) Serial.printf("Queue peek %s\n", msg.c_str());
           }
 
           if (memcmp(the_mesh.getLogPrefs()->url, "http", 4) != 0) {
             if (dbg) Serial.println("Url not set.");
             messageQueue.pop();
-            delete[] ptr;
           }
-
-          bool sent = false;
 
           // WiFi send
           HTTPClient https;
+          bool sent = false;
 
-          if (https.begin(*client, the_mesh.getLogPrefs()->url)) {  // HTTPS connection
+          if (https.begin(*client, the_mesh.getLogPrefs()->url)) { // HTTPS connection
             https.addHeader("Content-Type", "application/json");
 
             if (auth.length() > 7) {
@@ -2361,7 +2372,7 @@ void WiFiTaskCode(void * pvParameters) {
             if (the_mesh.debugPrint()) {
               if (dbg) Serial.println("[HTTP] Post data");
             }
-            int httpResponseCode = https.POST(ptr);
+            int httpResponseCode = https.POST(msg);
 
             if (httpResponseCode > 0) {
               String response = https.getString();
@@ -2383,7 +2394,6 @@ void WiFiTaskCode(void * pvParameters) {
             sendFailures = 0;
             reported = true;
             messageQueue.pop();
-            delete[] ptr;
             unsigned aft = ESP.getFreeHeap();
             if (the_mesh.debugPrint()) {
               if (dbg) Serial.printf("free mem: %u -> %u >> %d\n",bef,aft,bef-aft);
@@ -2432,6 +2442,16 @@ void WiFiTaskCode(void * pvParameters) {
   }
 }
 
+void MeshTaskCode(void * pvParameters) {
+  Serial.print("MeshTask running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for (;;) {
+    the_mesh.loop();
+    task_sleep(10);
+  }
+}
+
 void startWifiTask(int core) {
   xTaskCreatePinnedToCore(
     WiFiTaskCode,   /* Task function. */
@@ -2440,6 +2460,17 @@ void startWifiTask(int core) {
       NULL,           /* parameter of the task */
       1,              /* priority of the task */
       &WiFiTask,      /* Task handle to keep track of created task */
+      core);          /* pin task to core */
+}
+
+void startMeshTask(int core) {
+  xTaskCreatePinnedToCore(
+    MeshTaskCode,   /* Task function. */
+      "MeshTask",     /* name of task. */
+      10000,          /* Stack size of task */
+      NULL,           /* parameter of the task */
+      1,              /* priority of the task */
+      &MeshTask,      /* Task handle to keep track of created task */
       core);          /* pin task to core */
 }
 
@@ -2646,9 +2677,8 @@ void setup() {
   the_mesh.showWelcome();
 
   int core = xPortGetCoreID() == 1 ? 0 : 1;
-  startWifiTask(core);
+  startMeshTask(0);
+  startWifiTask(1);
 }
 
-void loop() {
-  the_mesh.loop();
-}
+void loop() {}
