@@ -495,6 +495,35 @@ class MyMesh : public BaseChatMesh, ContactVisitor {
   }
 
 public:
+  struct {
+    struct {
+      uint64_t packets = 0;
+      uint64_t packets_total = 0;
+      uint64_t air_time = 0;
+      uint64_t air_time_total = 0;
+    } rx;
+    struct {
+      uint64_t packets = 0;
+      uint64_t packets_total = 0;
+      uint64_t air_time = 0;
+      uint64_t air_time_total = 0;
+    } tx;
+
+    void reset(bool full=false) {
+      rx.packets = 0;
+      rx.air_time = 0;
+      tx.packets = 0;
+      tx.air_time = 0;
+
+      if (full) {
+        rx.packets_total = 0;
+        rx.air_time_total = 0;
+        tx.packets_total = 0;
+        tx.air_time_total = 0;
+      }
+    }
+  } stats;
+
   void addHistory(String str) {
     if (chatHistory.size() > 50) {
       chatHistory.erase(chatHistory.begin());
@@ -613,6 +642,12 @@ protected:
   }
 
   void logRx(mesh::Packet *pkt, int len, float score) {
+    uint32_t air_time = _radio->getEstAirtimeFor(len);
+    stats.rx.packets++;
+    stats.rx.packets_total++;
+    stats.rx.air_time += air_time;
+    stats.rx.air_time_total += air_time;
+
     if (_logp.usbraw) {
       Serial.print(getLogDateTime());
       Serial.printf(": RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%d", 
@@ -631,6 +666,14 @@ protected:
         Serial.printf("\n");
       }
     }
+  }
+
+  void logTx(mesh::Packet *pkt, int len) {
+    uint32_t air_time = _radio->getEstAirtimeFor(len);
+    stats.tx.packets++;
+    stats.tx.packets_total++;
+    stats.tx.air_time += air_time;
+    stats.tx.air_time_total += air_time;
   }
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override {
@@ -2322,6 +2365,7 @@ void WiFiTaskCode(void * pvParameters) {
         doc["type"] = "SYS";
         doc["reporter"] = sender;
         doc["time"]["local"] = getTimestamp(); //()->getCurrentTime();
+        // sysinfo
         doc["sys"]["type"] = "status";
         doc["sys"]["heap_total"] = ESP.getHeapSize();
         doc["sys"]["heap_free"] = ESP.getFreeHeap();
@@ -2330,6 +2374,16 @@ void WiFiTaskCode(void * pvParameters) {
         doc["sys"]["version"]["logger"] = LOGGER_VER_TEXT;
         doc["sys"]["version"]["meshcore"] = FIRMWARE_VER_TEXT;
         doc["sys"]["version"]["date"] = BUILD_DATE;
+        // stats
+        doc["sys"]["stats"]["tx"]["packets"] = the_mesh.stats.tx.packets;
+        doc["sys"]["stats"]["tx"]["packets_total"] = the_mesh.stats.tx.packets_total;
+        doc["sys"]["stats"]["tx"]["air_time"] = the_mesh.stats.tx.air_time;
+        doc["sys"]["stats"]["tx"]["air_time_total"] = the_mesh.stats.tx.air_time_total;
+        doc["sys"]["stats"]["rx"]["packets"] = the_mesh.stats.rx.packets;
+        doc["sys"]["stats"]["rx"]["packets_total"] = the_mesh.stats.rx.packets_total;
+        doc["sys"]["stats"]["rx"]["air_time"] = the_mesh.stats.rx.air_time;
+        doc["sys"]["stats"]["rx"]["air_time_total"] = the_mesh.stats.rx.air_time_total;
+        // contact
         doc["contact"]["new"] = false;
         doc["contact"]["type"] = ADV_TYPE_CHAT;
         doc["contact"]["flags"] = 0;
@@ -2341,6 +2395,9 @@ void WiFiTaskCode(void * pvParameters) {
         if (the_mesh.getLogPrefs()->selfreport != -1) {
           nextReport = millis() + (the_mesh.getLogPrefs()->selfreport * 1000);
         }
+
+        // reset stats
+        the_mesh.stats.reset();
       }
 
       if (messageQueue.size() > 0) {
