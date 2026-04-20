@@ -98,6 +98,8 @@ static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 static bool dbg = false;
 
+void logSystem(String tag);
+
 void task_sleep(uint32_t ms) {
   vTaskDelay(ms / portTICK_PERIOD_MS);
 }
@@ -2296,6 +2298,7 @@ public:
 
   void loop() {
     BaseChatMesh::loop();
+    getRTCClock()->tick();
     telemetryLoop();
 
     int len = strlen(command);
@@ -2335,6 +2338,47 @@ void halt() {
   while (1) ;
 }
 
+void logSystem(String tag="SYS") {
+      long now = millis();
+        char sender[(PUB_KEY_SIZE * 2) + 1];
+        mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
+
+        JsonDocument doc;
+        doc["version"] = 1;
+  doc["type"] = tag; //"SYS";
+        doc["reporter"] = sender;
+  doc["time"]["local"] = getTimestamp();
+        // sysinfo
+        doc["sys"]["type"] = "status";
+        doc["sys"]["heap_total"] = ESP.getHeapSize();
+        doc["sys"]["heap_free"] = ESP.getFreeHeap();
+        doc["sys"]["rssi"] = WiFi.RSSI();
+        doc["sys"]["uptime"] = now;
+        doc["sys"]["version"]["logger"] = LOGGER_VER_TEXT;
+        doc["sys"]["version"]["meshcore"] = FIRMWARE_VER_TEXT;
+        doc["sys"]["version"]["date"] = BUILD_DATE;
+        // stats
+        doc["sys"]["stats"]["tx"]["packets"] = the_mesh.stats.tx.packets;
+        doc["sys"]["stats"]["tx"]["packets_total"] = the_mesh.stats.tx.packets_total;
+        doc["sys"]["stats"]["tx"]["air_time"] = the_mesh.stats.tx.air_time;
+        doc["sys"]["stats"]["tx"]["air_time_total"] = the_mesh.stats.tx.air_time_total;
+        doc["sys"]["stats"]["tx"]["air_time_duty"] = the_mesh.stats.getDuty(now, the_mesh.stats.tx.air_time);
+        doc["sys"]["stats"]["rx"]["packets"] = the_mesh.stats.rx.packets;
+        doc["sys"]["stats"]["rx"]["packets_total"] = the_mesh.stats.rx.packets_total;
+        doc["sys"]["stats"]["rx"]["air_time"] = the_mesh.stats.rx.air_time;
+        doc["sys"]["stats"]["rx"]["air_time_total"] = the_mesh.stats.rx.air_time_total;
+        doc["sys"]["stats"]["rx"]["air_time_duty"] = the_mesh.stats.getDuty(now, the_mesh.stats.rx.air_time);
+        // contact
+        doc["contact"]["new"] = false;
+        doc["contact"]["type"] = ADV_TYPE_CHAT;
+        doc["contact"]["flags"] = 0;
+        doc["contact"]["name"] = the_mesh.getNodePrefs()->node_name;
+        doc["contact"]["pubkey"] = sender;
+        doc["contact"]["lat"] = the_mesh.getNodePrefs()->node_lat;
+        doc["contact"]["lon"] = the_mesh.getNodePrefs()->node_lon;
+        messageQueue.push(doc);
+}
+
 void WiFiTaskCode(void * pvParameters) {
   static bool connected = false;
   static bool sendsys   = false;
@@ -2369,44 +2413,7 @@ void WiFiTaskCode(void * pvParameters) {
 
       long now = millis();
       if (!reported || (the_mesh.getLogPrefs()->selfreport > 0 && now > nextReport)) {
-        char sender[(PUB_KEY_SIZE * 2) + 1];
-        mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
-
-
-        JsonDocument doc;
-        doc["version"] = 1;
-        doc["type"] = "SYS";
-        doc["reporter"] = sender;
-        doc["time"]["local"] = getTimestamp(); //()->getCurrentTime();
-        // sysinfo
-        doc["sys"]["type"] = "status";
-        doc["sys"]["heap_total"] = ESP.getHeapSize();
-        doc["sys"]["heap_free"] = ESP.getFreeHeap();
-        doc["sys"]["rssi"] = WiFi.RSSI();
-        doc["sys"]["uptime"] = now;
-        doc["sys"]["version"]["logger"] = LOGGER_VER_TEXT;
-        doc["sys"]["version"]["meshcore"] = FIRMWARE_VER_TEXT;
-        doc["sys"]["version"]["date"] = BUILD_DATE;
-        // stats
-        doc["sys"]["stats"]["tx"]["packets"] = the_mesh.stats.tx.packets;
-        doc["sys"]["stats"]["tx"]["packets_total"] = the_mesh.stats.tx.packets_total;
-        doc["sys"]["stats"]["tx"]["air_time"] = the_mesh.stats.tx.air_time;
-        doc["sys"]["stats"]["tx"]["air_time_total"] = the_mesh.stats.tx.air_time_total;
-        doc["sys"]["stats"]["tx"]["air_time_duty"] = the_mesh.stats.getDuty(now, the_mesh.stats.tx.air_time);
-        doc["sys"]["stats"]["rx"]["packets"] = the_mesh.stats.rx.packets;
-        doc["sys"]["stats"]["rx"]["packets_total"] = the_mesh.stats.rx.packets_total;
-        doc["sys"]["stats"]["rx"]["air_time"] = the_mesh.stats.rx.air_time;
-        doc["sys"]["stats"]["rx"]["air_time_total"] = the_mesh.stats.rx.air_time_total;
-        doc["sys"]["stats"]["rx"]["air_time_duty"] = the_mesh.stats.getDuty(now, the_mesh.stats.rx.air_time);
-        // contact
-        doc["contact"]["new"] = false;
-        doc["contact"]["type"] = ADV_TYPE_CHAT;
-        doc["contact"]["flags"] = 0;
-        doc["contact"]["name"] = the_mesh.getNodePrefs()->node_name;
-        doc["contact"]["pubkey"] = sender;
-        doc["contact"]["lat"] = the_mesh.getNodePrefs()->node_lat;
-        doc["contact"]["lon"] = the_mesh.getNodePrefs()->node_lon;
-        messageQueue.push(doc);
+        logSystem();
         if (the_mesh.getLogPrefs()->selfreport != -1) {
           nextReport = now + (the_mesh.getLogPrefs()->selfreport * 1000);
         }
@@ -2434,6 +2441,7 @@ void WiFiTaskCode(void * pvParameters) {
           HTTPClient https;
           bool sent = false;
 
+          if (dbg) Serial.printf("[HTTP] Send packet: %u bytes (%u rem.)\n", msg.length(), messageQueue.size());
           if (https.begin(*client, the_mesh.getLogPrefs()->url)) { // HTTPS connection
             https.addHeader("Content-Type", "application/json");
 
@@ -2455,6 +2463,7 @@ void WiFiTaskCode(void * pvParameters) {
               ++sendFailures;
             }
 
+            messageQueue.pop();
             https.end();
           } else {
             ++sendFailures;
@@ -2465,7 +2474,6 @@ void WiFiTaskCode(void * pvParameters) {
             unsigned bef = ESP.getFreeHeap();
             sendFailures = 0;
             reported = true;
-            messageQueue.pop();
             unsigned aft = ESP.getFreeHeap();
             if (the_mesh.debugPrint()) {
               if (dbg) Serial.printf("free mem: %u -> %u >> %d\n",bef,aft,bef-aft);
@@ -2482,8 +2490,12 @@ void WiFiTaskCode(void * pvParameters) {
         webserver = true;
       }
     } else if (connected && (millis() > (lastConencted + 5000) || sendFailures > 5)) {
+      WiFi.disconnect();
       connected = false;
       sendFailures = 0;
+    }
+
+    if (!connected && millis() > (lastConencted + 10000)) {
       char sender[(PUB_KEY_SIZE * 2) + 1];
       mesh::Utils::toHex(sender, the_mesh.getPubKey(), PUB_KEY_SIZE);
 
@@ -2505,7 +2517,6 @@ void WiFiTaskCode(void * pvParameters) {
         sendsys = true;
       }
 
-      WiFi.disconnect();
       WiFi.reconnect();
       lastConencted = millis();
     }
@@ -2528,7 +2539,7 @@ void startWifiTask(int core) {
   xTaskCreatePinnedToCore(
     WiFiTaskCode,   /* Task function. */
       "WiFiTask",     /* name of task. */
-      10000,          /* Stack size of task */
+      20000,          /* Stack size of task */
       NULL,           /* parameter of the task */
       1,              /* priority of the task */
       &WiFiTask,      /* Task handle to keep track of created task */
