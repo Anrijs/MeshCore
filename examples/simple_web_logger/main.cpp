@@ -515,6 +515,7 @@ public:
     float getDuty(long now, uint64_t air_time) {
       long tdelta = now - last;
       float duty = (static_cast<float>(air_time) / (now - last)) * 100.0f;
+      if (dyty >= 100 || < 0) return 0;
       return duty;
     }
 
