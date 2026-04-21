@@ -1077,7 +1077,7 @@ protected:
     Serial.printf("  cmd:          %s\n", cmd.c_str());
     }
 
-    if (!reply && hasRecipient) return;
+    if (!reply) return;
 
     if (cmd == "/echo") {
       data.trim();
