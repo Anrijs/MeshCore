@@ -50,8 +50,6 @@ void MyMesh::begin(FILESYSTEM& fs) {
   }
 
   loadContacts();
-  _public = addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
-  channels.push_back(_public);
 }
 
 void MyMesh::savePrefs() {

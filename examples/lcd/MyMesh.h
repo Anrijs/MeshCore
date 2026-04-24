@@ -85,7 +85,6 @@ public:
   const int32_t gmtOffset = 3600 * 2; // TODO: make configurable
 
   NodePrefs _prefs;
-  ChannelDetails* _public;
 
   std::vector<message>* messages;
   std::vector<message>* outmessages;

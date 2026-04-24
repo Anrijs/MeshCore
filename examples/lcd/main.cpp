@@ -240,14 +240,15 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(9600);
 
-  Boot* hello = new Boot(&gui);
-  gui.page = hello;
-  resetLcd();
-
-  delay(500);
+  Boot hello = Boot(&gui);
+  gui.page = &hello;
 
   board.begin();
   setupMenu();
+
+  resetLcd();
+  gui.draw(true);
+  delay(500);
 
   if (!radio_init()) { halt(); }
 
@@ -257,11 +258,6 @@ void setup() {
   the_mesh.begin(InternalFS);
   the_mesh.getRTCClock()->setCurrentTime(BUILD_TIME_EPOCH);
 
-  // ch must be crated after mesh
-  Channel* pub = new Channel(&gui, the_mesh._public);
-  MIPage* mipub = new MIPage(&gui, "Public", pub);
-  menu.channels.m->add(mipub);
-
   addSecrets(&the_mesh, &gui, menu.channels.m);
 
   radio_set_params(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
@@ -269,7 +265,6 @@ void setup() {
 
   gui.page = menu.home.m;
   gui.draw();
-  delete hello;
 
   // get all contacts
   ContactsIterator iter = the_mesh.startContactsIterator();
