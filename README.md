@@ -1,3 +1,7 @@
+# ‼️ New MeshLog Firmware available at [Anrijs/MeshLog-firmware](https://github.com/Anrijs/MeshLog-firmware)
+
+---
+
 ## About MeshCore
 
 MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
